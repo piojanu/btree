@@ -2,11 +2,11 @@
 
 namespace btree {
 
-int Container::insert(record rec) {
+int Container::insert(Record record) {
     return NOT_IMPLEMENTED;
 }
 
-int Container::update(record rec) {
+int Container::update(Record record) {
     return NOT_IMPLEMENTED;
 }
 
