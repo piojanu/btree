@@ -20,10 +20,9 @@ struct NodeEntry {
 template<uint8_t RECORDS_IN_INDEX_NODE,
         typename = typename std::enable_if<RECORDS_IN_INDEX_NODE <= 64>::type>
 struct Node {
-    Node() : bitmask_free_space(0), offset(-1) {};
+    Node() : offset(-1) {};
 
     // 0 - free, 1 - occupied
-    uint64_t bitmask_free_space;
     NodeEntry node_entries[RECORDS_IN_INDEX_NODE];
     int64_t offset;
 };
