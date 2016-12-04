@@ -8,23 +8,26 @@
 namespace btree {
 
 struct NodeEntry {
-    NodeEntry() : offset(-1), record(0, "") {};
-    NodeEntry(int64_t _offset, Record _record) : offset(_offset), record(_record) {};
+    NodeEntry() = default;
+    NodeEntry(uint64_t _offset, uint64_t _key) : offset(_offset) {
+        record.key = _key;
+    }
+    NodeEntry(uint64_t _offset, const char _value[8]) : offset(_offset) {
+        strcpy(record.value, _value);
+    }
 
-    // Offset of left node in index file.
-    int64_t offset;
-    // Key, value pair.
+    // Offset of left node in an inner node or key of record in a leaf.
+    uint64_t offset;
+    // Key in an inner node or value in a leaf.
     Record record;
 };
 
-template<uint8_t RECORDS_IN_INDEX_NODE,
-        typename = typename std::enable_if<RECORDS_IN_INDEX_NODE <= 64>::type>
+template<uint32_t RECORDS_IN_INDEX_NODE>
 struct Node {
-    Node() : offset(-1) {};
-
-    // 0 - free, 1 - occupied
+    uint64_t usage;
     NodeEntry node_entries[RECORDS_IN_INDEX_NODE];
-    int64_t offset;
+    // Offset of outer right node in an inner node or nothing (0) in a leaf.
+    uint64_t offset;
 };
 
 }

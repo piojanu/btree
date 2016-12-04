@@ -3,31 +3,28 @@
 #include "Record.h"
 #include "Node.h"
 
-#include <utility>
 #include <cstdint>
-#include <string>
-#include <ostream>
+#include <fstream>
 
 namespace btree {
 
 // Container methods' return/exceptions codes (success, errors...)
 enum : int {
     SUCCESS = 0,
+    RECORD_NOT_FOUND = -1,
     NOT_IMPLEMENTED = -1000
 };
 
-template <const uint32_t RECORDS_ON_DATA_PAGE, const uint8_t RECORDS_IN_INDEX_NODE,
-        typename = typename std::enable_if<RECORDS_IN_INDEX_NODE <= 64>::type>
+template <const uint32_t RECORDS_IN_INDEX_NODE>
 class Container {
 public:
     // Insert record into container.
-    int insert(Record record) {
+    int insert(uint64_t key, const char value[8]) {
         return NOT_IMPLEMENTED;
     }
 
-    // Update record in container.
-    // In record param put key of record you want to update and new value.
-    int update(Record record) {
+    // Assign new value for record with given key.
+    int update(uint64_t key, const char value[8]) {
         return NOT_IMPLEMENTED;
     }
 
@@ -37,19 +34,22 @@ public:
     }
 
     // Get value of given key.
-    int get_value(uint64_t key, std::string &value) {
+    int get_value(uint64_t key, const char value[8]) {
         return NOT_IMPLEMENTED;
     }
 
-    // Print index file. Set raw to true, if you want to print whole raw file.
-    int print_raw_index(std::ostream &out) {
+    // Print all data in order.
+    int print_data_ordered(std::ostream &out) {
         return NOT_IMPLEMENTED;
     }
 
-    // Print data file. Set raw to true, if you want to print whole raw file.
-    int print_raw_data(std::ostream &out) {
+    // Print raw index file.
+    int print_raw_file(std::ostream &out) {
         return NOT_IMPLEMENTED;
     }
+
+private:
+    std::fstream file;
 };
 
 }
