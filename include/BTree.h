@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Storage.h"
 #include "Record.h"
 #include "Node.h"
 
@@ -7,13 +8,6 @@
 #include <fstream>
 
 namespace btree {
-
-// Container methods' return/exceptions codes (success, errors...)
-enum : int {
-    SUCCESS = 0,
-    RECORD_NOT_FOUND = -1,
-    NOT_IMPLEMENTED = -1000
-};
 
 template <const uint32_t RECORDS_IN_INDEX_NODE>
 class Container {

@@ -70,8 +70,8 @@ if(UNIX)
 endif(UNIX)
 
 
-add_custom_command(TARGET ${TEST_EXE_NAME} POST_BUILD COMMAND ${TEST_EXE_NAME}
-                   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+#add_custom_command(TARGET ${TEST_EXE_NAME} POST_BUILD COMMAND ${TEST_EXE_NAME}
+#                   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 enable_testing()
 add_test(NAME    ${TEST_EXE_NAME}

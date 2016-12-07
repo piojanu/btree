@@ -4,7 +4,7 @@
 struct RecordBasicTest : public ::testing::Test {
     RecordBasicTest() : empty_record() {
         inner_record.key = 123;
-        strcpy(inner_record.value, "CB12345");
+        strcpy(leaf_record.value, "CB12345");
     }
 
     btree::Record inner_record, leaf_record, empty_record;
