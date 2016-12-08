@@ -1,6 +1,8 @@
 #include "gtest/gtest.h"
 #include "BTree.h"
 
+#include <array>
+
 const uint32_t RECORDS_IN_INDEX_NODE = 3;
 
 struct BTreeBasicTest : public ::testing::Test {
