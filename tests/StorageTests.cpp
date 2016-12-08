@@ -7,7 +7,7 @@ struct StorageBasicTest : public ::testing::Test {
     StorageBasicTest() : values{1, 1, 2, 2, 0, 0, 0, 0,
                                 2, 1, 1, 2, 2, 0, 0, 0,
                                 3, 3, 3, 4, 4, 5, 5, 0}, height(2),
-                         stream(""), node(), storage(stream, height) {
+                         stream(""), node(), storage(&stream, height) {
         for (uint64_t value : values) {
             stream.write(reinterpret_cast<char *>(&value), sizeof(value));
         }

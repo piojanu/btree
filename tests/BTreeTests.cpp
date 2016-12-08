@@ -2,19 +2,30 @@
 #include "BTree.h"
 
 #include <array>
+#include <fstream>
 
 const uint32_t RECORDS_IN_INDEX_NODE = 3;
 
+struct BTreeCreationTest : public ::testing::Test {
+    void TearDown() override {
+        std::remove(file_name.c_str());
+    }
+
+    std::stringstream stream;
+    const std::string file_name = "test.btree";
+};
+
 struct BTreeBasicTest : public ::testing::Test {
-    BTreeBasicTest() : container(), value("CB12345"), value_updated("GD12345"), key(123) {}
+    BTreeBasicTest() : container(&stream), stream(""), value("CB12345"), value_updated("GD12345"), key(123) {}
 
     btree::Container<RECORDS_IN_INDEX_NODE> container;
+    std::stringstream stream;
     char value[8], value_updated[8];
     uint64_t key = 123;
 };
 
 struct BTreeAdvancedTest : public ::testing::Test {
-    BTreeAdvancedTest() : container(), value("CB12345") {}
+    BTreeAdvancedTest() : container(&stream), stream(""), value("CB12345") {}
 
     void SetUp() override {
         uint64_t key = records.size();
@@ -30,9 +41,23 @@ struct BTreeAdvancedTest : public ::testing::Test {
     }
 
     btree::Container<RECORDS_IN_INDEX_NODE> container;
+    std::stringstream stream;
     std::array<std::pair<uint64_t, char[8]>, 5> records;
     const char value[8];
 };
+
+TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithPathAndDeleteContainerTHENfileExists) {
+    auto container = new btree::Container<RECORDS_IN_INDEX_NODE>(file_name);
+    delete container;
+
+    std::ifstream f(file_name);
+    EXPECT_TRUE(f.good());
+}
+
+TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithStreamAndDeleteContainerTHENproperlyBehave) {
+    auto container = new btree::Container<RECORDS_IN_INDEX_NODE>(&stream);
+    delete container;
+}
 
 TEST_F(BTreeBasicTest, GIVENemptyContainerWHENinsertTHENreturnSuccess) {
     auto ret = container.insert(key, value);

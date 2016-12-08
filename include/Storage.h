@@ -16,7 +16,7 @@ struct ExtendedNode {
 template<uint32_t RECORDS_IN_INDEX_NODE>
 class Storage {
 public:
-    Storage(std::iostream &_stream, const uint64_t &_height) : stream(_stream), height(_height) {}
+    Storage(std::iostream *_stream, const uint64_t &_height) : stream(_stream), height(_height) {}
 
     // Returns error code or btree::SUCCESS.
     int find_node(uint64_t key, ExtendedNode<RECORDS_IN_INDEX_NODE> *ext_node) const {
@@ -41,8 +41,8 @@ public:
     // Returns error code or btree::SUCCESS.
     int open_node(uint64_t offset, Node<RECORDS_IN_INDEX_NODE> *node) const {
         try {
-            stream.seekg(offset * sizeof(Node<RECORDS_IN_INDEX_NODE>), std::ios_base::beg);
-            stream.read(reinterpret_cast<char *>(node), sizeof(Node<RECORDS_IN_INDEX_NODE>));
+            stream->seekg(offset * sizeof(Node<RECORDS_IN_INDEX_NODE>), std::ios_base::beg);
+            stream->read(reinterpret_cast<char *>(node), sizeof(Node<RECORDS_IN_INDEX_NODE>));
         }
         catch (...) {
             return btree::SOMETHING_WENT_WRONG;
@@ -93,7 +93,7 @@ public:
     }
 
 private:
-    std::iostream &stream;
+    std::iostream *stream;
     const uint64_t &height;
 };
 

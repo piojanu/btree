@@ -12,6 +12,35 @@ namespace btree {
 template <const uint32_t RECORDS_IN_INDEX_NODE>
 class Container {
 public:
+    Container(std::string path) : Container() {
+        file = new std::fstream();
+        good = true;
+
+        try {
+            file->open(path, std::ios::in | std::ios::out | std::ios::trunc);
+            if( file->bad() ) {
+                good = false;
+            }
+        }
+        catch (...) {
+            good = false;
+        }
+
+        index_data = static_cast<std::iostream *>(file);
+    }
+
+    Container(std::iostream *stream) : Container() {
+        good = true;
+        index_data = stream;
+    }
+
+    ~Container() {
+        if( file != nullptr ) {
+            file->close();
+            delete file;
+        }
+    }
+
     // Insert record into container.
     int insert(uint64_t key, const char value[8]) {
         return NOT_IMPLEMENTED;
@@ -43,7 +72,13 @@ public:
     }
 
 private:
-    std::fstream file;
+    Container() : file(nullptr), height(1), storage(index_data, height) {}
+
+    Storage<RECORDS_IN_INDEX_NODE> storage;
+    std::iostream *index_data;
+    std::fstream *file;
+    uint64_t height;
+    bool good;
 };
 
 }
