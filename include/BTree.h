@@ -14,24 +14,24 @@ class Container {
 public:
     Container(std::string path) : Container() {
         file = new std::fstream();
-        good = true;
 
         try {
             file->open(path, std::ios::in | std::ios::out | std::ios::trunc);
-            if( file->bad() ) {
-                good = false;
+            if( file->good() ) {
+                good = true;
             }
         }
         catch (...) {
-            good = false;
+            perror("Error occurred while opening file buffer in Container constructor!");
         }
 
         index_data = static_cast<std::iostream *>(file);
+        storage = new Storage<RECORDS_IN_INDEX_NODE>(index_data, height);
     }
 
     Container(std::iostream *stream) : Container() {
-        good = true;
         index_data = stream;
+        storage = new Storage<RECORDS_IN_INDEX_NODE>(index_data, height);
     }
 
     ~Container() {
@@ -39,6 +39,8 @@ public:
             file->close();
             delete file;
         }
+
+        delete storage;
     }
 
     // Insert record into container.
@@ -71,10 +73,15 @@ public:
         return NOT_IMPLEMENTED;
     }
 
-private:
-    Container() : file(nullptr), height(1), storage(index_data, height) {}
+    // Returns true if object is properly initialised.
+    bool is_good() {
+        return good;
+    }
 
-    Storage<RECORDS_IN_INDEX_NODE> storage;
+private:
+    Container() : storage(nullptr), index_data(nullptr), file(nullptr), height(1), good(false) {}
+
+    Storage<RECORDS_IN_INDEX_NODE> *storage;
     std::iostream *index_data;
     std::fstream *file;
     uint64_t height;

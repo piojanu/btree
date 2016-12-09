@@ -7,14 +7,16 @@ struct StorageBasicTest : public ::testing::Test {
     StorageBasicTest() : values{1, 1, 2, 2, 0, 0, 0, 0,
                                 2, 1, 1, 2, 2, 0, 0, 0,
                                 3, 3, 3, 4, 4, 5, 5, 0}, height(2),
-                         stream(""), node(), storage(&stream, height) {
+                         stream(""), node(), storage(&stream, height, nodes_count) {
         for (uint64_t value : values) {
             stream.write(reinterpret_cast<char *>(&value), sizeof(value));
         }
+
+        node.usage = 7;
     }
 
     std::stringstream stream;
-    uint64_t values[24], height;
+    uint64_t values[24], nodes_count = sizeof(values) / sizeof(btree::Node<RECORDS_IN_INDEX_NODE>), height;
     static const uint32_t RECORDS_IN_INDEX_NODE = 3;
 
     btree::Node<RECORDS_IN_INDEX_NODE> node;
@@ -141,7 +143,13 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey6THENproperlyOpened
     EXPECT_EQ(values[16 + 7], node[1].node.offset);
 }
 
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENopenNotExistingNodeTHENreturnsErrorCode) {
+    auto ret = storage.open_node(nodes_count + 1, &node);
+    EXPECT_EQ(ret, btree::INVALID_OFFSET);
+}
+
 TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENopenNodeTHENproperlyOpenedNode) {
+    btree::g_iinfo.reset();
     auto ret = storage.open_node(1, &node);
     ASSERT_EQ(ret, btree::SUCCESS);
 
@@ -153,6 +161,99 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENopenNodeTHENproperlyOpenedNode
     EXPECT_EQ(values[8 + 5], node.node_entries[2].offset);
     EXPECT_EQ(values[8 + 6], node.node_entries[2].record.key);
     EXPECT_EQ(values[8 + 7], node.offset);
+
+    EXPECT_EQ(btree::g_iinfo.reads, 1);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENwriteToExistingNodeTHENreturnsErrorCode) {
+    auto ret = storage.write_node(1, &node);
+    EXPECT_EQ(ret, btree::INVALID_OFFSET);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENwriteToExistingNodeWithForceTHENreturnsSuccessAndProperlyWrites) {
+    btree::g_iinfo.reset();
+    const uint64_t offset = 1;
+    auto ret = storage.write_node(offset, &node, true);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    uint64_t value;
+    stream.seekg(offset * sizeof(btree::Node<RECORDS_IN_INDEX_NODE>), std::ios_base::beg);
+    stream.read(reinterpret_cast<char *>(&value), sizeof(value));
+    EXPECT_EQ(value, node.usage);
+    EXPECT_EQ(btree::g_iinfo.writes, 1);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENwriteAfterEndOffsetTHENreturnsErrorCode) {
+    auto ret = storage.write_node(nodes_count + 1, &node);
+    EXPECT_EQ(ret, btree::INVALID_OFFSET);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENwriteToEndOffsetTHENreturnsSuccessAndProperlyWrites) {
+    btree::g_iinfo.reset();
+    const uint64_t offset = 3;
+    auto ret = storage.write_node(offset, &node);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    uint64_t value;
+    stream.seekg(offset * sizeof(btree::Node<RECORDS_IN_INDEX_NODE>), std::ios_base::beg);
+    stream.read(reinterpret_cast<char *>(&value), sizeof(value));
+    EXPECT_EQ(value, node.usage);
+    EXPECT_EQ(btree::g_iinfo.writes, 1);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteEndOffsetTHENreturnsErrorCode) {
+    auto ret = storage.delete_node(nodes_count);
+    EXPECT_EQ(ret, btree::INVALID_OFFSET);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteAfterEndOffsetTHENreturnsErrorCode) {
+    auto ret = storage.delete_node(nodes_count + 1);
+    EXPECT_EQ(ret, btree::INVALID_OFFSET);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteExistingOffsetTHENreturnsSuccess) {
+    auto ret = storage.delete_node(1);
+    EXPECT_EQ(ret, btree::SUCCESS);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteFreeOffsetTHENreturnsErrorCode) {
+    auto ret = storage.delete_node(1);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    ret = storage.delete_node(1);
+    EXPECT_EQ(ret, btree::INVALID_OFFSET);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENgetFreeOffsetTHENreturnsProperFreeOffset) {
+    auto ret = storage.get_free_offset();
+    EXPECT_EQ(ret, nodes_count);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteExistingOffsetAndGetFreeOffsetTHENreturnsProperFreeOffset) {
+    auto ret = storage.delete_node(1);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    ret = storage.get_free_offset();
+    EXPECT_EQ(ret, 1);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteThenWriteToFreeOffsetTHENproperWriteAndDeletedOffsetFromFree) {
+    btree::g_iinfo.reset();
+    const uint64_t offset = 1;
+
+    auto ret = storage.delete_node(offset);
+    ASSERT_EQ(ret, btree::SUCCESS);
+    ASSERT_EQ(storage.get_free_offset(), offset);
+
+    ret = storage.write_node(offset, &node);
+    ASSERT_EQ(ret, btree::SUCCESS);
+    EXPECT_NE(storage.get_free_offset(), offset);
+
+    uint64_t value;
+    stream.seekg(offset * sizeof(btree::Node<RECORDS_IN_INDEX_NODE>), std::ios_base::beg);
+    stream.read(reinterpret_cast<char *>(&value), sizeof(value));
+    EXPECT_EQ(value, node.usage);
+    EXPECT_EQ(btree::g_iinfo.writes, 1);
 }
 
 TEST_F(StorageBinarySearchTest, GIVENnodeWithEntriesWHENbinarySearchProperKeyTHENpointsProperEntry) {

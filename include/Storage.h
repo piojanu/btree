@@ -4,6 +4,7 @@
 #include "Node.h"
 
 #include <iosfwd>
+#include <unordered_set>
 
 namespace btree {
 
@@ -16,7 +17,8 @@ struct ExtendedNode {
 template<uint32_t RECORDS_IN_INDEX_NODE>
 class Storage {
 public:
-    Storage(std::iostream *_stream, const uint64_t &_height) : stream(_stream), height(_height) {}
+    Storage(std::iostream *_stream, const uint64_t &_height, const uint64_t nodes_count = 0) : stream(_stream), height(_height),
+                                                               free_offsets(), end_offset(nodes_count) {}
 
     // Returns error code or btree::SUCCESS.
     int find_node(uint64_t key, ExtendedNode<RECORDS_IN_INDEX_NODE> *ext_node) const {
@@ -40,9 +42,14 @@ public:
 
     // Returns error code or btree::SUCCESS.
     int open_node(uint64_t offset, Node<RECORDS_IN_INDEX_NODE> *node) const {
+        if (offset >= end_offset || free_offsets.find(offset) != free_offsets.end()) {
+            return INVALID_OFFSET;
+        }
+
         try {
             stream->seekg(offset * sizeof(Node<RECORDS_IN_INDEX_NODE>), std::ios_base::beg);
             stream->read(reinterpret_cast<char *>(node), sizeof(Node<RECORDS_IN_INDEX_NODE>));
+            g_iinfo.reads++;
         }
         catch (...) {
             return btree::SOMETHING_WENT_WRONG;
@@ -51,8 +58,38 @@ public:
         return btree::SUCCESS;
     }
 
-    uint64_t get_height() const {
-        return height;
+    // Writes node object into specified offset.
+    // Write can't be after end offset.
+    // Write can't override existing node,
+    int write_node(uint64_t offset, Node<RECORDS_IN_INDEX_NODE> *node, bool force = false) {
+        if (offset == end_offset) {
+            end_offset++;
+        } else if (offset < end_offset && (force || free_offsets.find(offset) != free_offsets.end())) {
+            free_offsets.erase(offset);
+        } else {
+            return INVALID_OFFSET;
+        }
+
+        try {
+            stream->seekp(offset * sizeof(Node<RECORDS_IN_INDEX_NODE>), std::ios_base::beg);
+            stream->write(reinterpret_cast<char *>(node), sizeof(Node<RECORDS_IN_INDEX_NODE>));
+            g_iinfo.writes++;
+        }
+        catch (...) {
+            return btree::SOMETHING_WENT_WRONG;
+        }
+
+        return btree::SUCCESS;
+    }
+
+    // Deletes node at specified offset.
+    int delete_node(uint64_t offset) {
+        if (offset >= end_offset || free_offsets.find(offset) != free_offsets.end()) {
+            return INVALID_OFFSET;
+        }
+
+        free_offsets.insert(offset);
+        return SUCCESS;
     }
 
     // Returns position where record is or where it should be (first bigger record).
@@ -92,9 +129,23 @@ public:
         return b;
     }
 
+    uint64_t get_height() const {
+        return height;
+    }
+
+    uint64_t get_free_offset() const {
+        if (free_offsets.empty()) {
+            return end_offset;
+        }
+
+        return *free_offsets.begin();
+    }
 private:
     std::iostream *stream;
     const uint64_t &height;
+
+    std::unordered_set<uint64_t > free_offsets;
+    uint64_t end_offset;
 };
 
 }
