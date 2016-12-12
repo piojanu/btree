@@ -24,8 +24,8 @@ struct BTreeBasicTest : public ::testing::Test {
     uint64_t key = 123;
 };
 
-struct BTreeAdvancedTest : public ::testing::Test {
-    BTreeAdvancedTest() : container(&stream), stream(""), value("CB12345") {}
+struct BTreePrintTest : public ::testing::Test {
+    BTreePrintTest() : container(&stream), stream(""), value("CB12345") {}
 
     void SetUp() override {
         uint64_t key = records.size();
@@ -46,6 +46,65 @@ struct BTreeAdvancedTest : public ::testing::Test {
     const char value[8];
 };
 
+struct BTreeAdvancedTest : public ::testing::Test {
+    BTreeAdvancedTest() : begin_state(), end_state(), container(&begin_state),
+                          count_end_pages(0) {}
+
+    void write_page(std::iostream &stream, const uint64_t &usage, const uint64_t &p1,
+                                           const uint64_t &one,   const uint64_t &p2,
+                                           const uint64_t &two,   const uint64_t &p3) {
+        stream.write(reinterpret_cast<const char *>(&usage), sizeof(usage));
+        stream.write(reinterpret_cast<const char *>(&p1), sizeof(p1));
+        stream.write(reinterpret_cast<const char *>(&one), sizeof(one));
+        stream.write(reinterpret_cast<const char *>(&p2), sizeof(p2));
+        stream.write(reinterpret_cast<const char *>(&two), sizeof(two));
+        stream.write(reinterpret_cast<const char *>(&p3), sizeof(p3));
+
+        if (&stream == &end_state) {
+            count_end_pages++;
+        }
+    }
+
+    void write_page(std::iostream &stream, const uint64_t &usage, const uint64_t &one,
+                                           const char v1[8],      const uint64_t &two,
+                                           const char v2[8]) {
+        uint64_t zero = 0;
+
+        stream.write(reinterpret_cast<const char *>(&usage), sizeof(usage));
+        stream.write(reinterpret_cast<const char *>(&one), sizeof(one));
+        stream.write(v1, sizeof(uint64_t));
+        stream.write(reinterpret_cast<const char *>(&two), sizeof(two));
+        stream.write(v2, sizeof(uint64_t));
+        stream.write(reinterpret_cast<const char *>(&zero), sizeof(zero));
+
+        if (&stream == &end_state) {
+            count_end_pages++;
+        }
+    }
+
+    void validate() {
+        for (int i = 0; i < count_end_pages; i++) {
+            uint64_t value = 0;
+            uint64_t expected = 0;
+
+            for (int j = 0; j < 6; j++) {
+                begin_state.read(reinterpret_cast<char *>(&value), sizeof(value));
+                end_state.read(reinterpret_cast<char *>(&expected), sizeof(expected));
+
+                EXPECT_EQ(value, expected) << "Page: " << i << " Field: " << j;
+            }
+        }
+    }
+
+    std::stringstream begin_state, end_state;
+    btree::Container<2> container;
+    unsigned int count_end_pages;
+
+    const char ZERO_STR[8] = { '\0' };
+};
+
+// ### CREATION TESTS ### //
+
 TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithPathAndDeleteContainerTHENfileExists) {
     auto container = new btree::Container<RECORDS_IN_INDEX_NODE>(file_name);
     delete container;
@@ -58,6 +117,8 @@ TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithStreamAndDeleteContainerTHEN
     auto container = new btree::Container<RECORDS_IN_INDEX_NODE>(&stream);
     delete container;
 }
+
+// ### BASIC TESTS ### //
 
 TEST_F(BTreeBasicTest, GIVENemptyContainerWHENinsertTHENreturnSuccess) {
     auto ret = container.insert(key, value);
@@ -131,7 +192,7 @@ TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENremoveRecordAndGetValueTHENre
     EXPECT_TRUE(ret == btree::RECORD_NOT_FOUND);
 }
 
-TEST_F(BTreeAdvancedTest, GIVENcontainerWith5RecordsWHENprintDataOrderedTHENproperPrint) {
+TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintDataOrderedTHENproperPrint) {
     std::stringstream stream;
     auto ret = container.print_data_ordered(stream);
     ASSERT_TRUE(ret == btree::SUCCESS);
@@ -146,7 +207,9 @@ TEST_F(BTreeAdvancedTest, GIVENcontainerWith5RecordsWHENprintDataOrderedTHENprop
     }
 }
 
-TEST_F(BTreeAdvancedTest, GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBinaryPrint) {
+// ### PRINT TESTS ### //
+
+TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBinaryPrint) {
     std::stringstream stream;
     auto ret = container.print_raw_file(stream);
     ASSERT_TRUE(ret == btree::SUCCESS);
@@ -203,4 +266,69 @@ TEST_F(BTreeAdvancedTest, GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBi
     EXPECT_EQ(0, *data);
 
     std::free(data);
+}
+
+// ### ADVANCED INSERTION TESTS ### //
+
+TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertLowerValueTHENproperSplit) {
+    // Prepare case record
+    const uint64_t key = 1;
+    const char value[8] = "XX11111";
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777");
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 3, 2, 0, 0); // Root
+    write_page(end_state, 2, key, value, 3, "AA33333"); // Node 1
+    write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR); // Node 2
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertMidValueTHENproperSplit) {
+    // Prepare case record
+    const uint64_t key = 4;
+    const char value[8] = "XX44444";
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777");
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, key, 2, 0, 0); // Root
+    write_page(end_state, 2, 3, "AA33333", key, value); // Node 1
+    write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR); // Node 2
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertHigherValueTHENproperSplit) {
+    // Prepare case record
+    const uint64_t key = 9;
+    const char value[8] = "XX99999";
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777");
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 7, 2, 0, 0); // Root
+    write_page(end_state, 2, 3, "AA33333", 7, "BB77777"); // Node 1
+    write_page(end_state, 1, key, value, 0, ZERO_STR); // Node 2
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
 }
