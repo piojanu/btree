@@ -270,6 +270,73 @@ TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBinar
 
 // ### ADVANCED INSERTION TESTS ### //
 
+TEST_F(BTreeAdvancedTest, GIVENrootNodeWithSpaceWHENinsertValueTHENproperInsertion) {
+    // Prepare case record
+    const uint64_t key = 7;
+    const char value[8] = "XX77777";
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
+
+    // Prepare expected end state
+    write_page(end_state, 2, 3, "AA33333", key, value); // Root
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENleafsWithSpaceWHENinsertLowerValueTHENproperInsertion) {
+    // Prepare case record
+    const uint64_t key = 1;
+    const char value[8] = "XX11111";
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
+    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 3, 2, 0, 0); // Root
+    write_page(end_state, 2, key, value, 3, "AA33333"); // Node 1
+    write_page(end_state, 1, 4, "AA44444", 0, ZERO_STR); // Node 2
+
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENleafsWithSpaceWHENinsertHigherValueTHENproperInsertion) {
+    // Prepare case record
+    const uint64_t key = 7;
+    const char value[8] = "XX77777";
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
+    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 3, 2, 0, 0); // Root
+    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR); // Node 1
+    write_page(end_state, 2, 4, "AA44444", key, value); // Node 2
+
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
 TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertLowerValueTHENproperSplit) {
     // Prepare case record
     const uint64_t key = 1;
@@ -324,6 +391,191 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertHigherValueTHENproperSplit)
     write_page(end_state, 1, 1, 7, 2, 0, 0); // Root
     write_page(end_state, 2, 3, "AA33333", 7, "BB77777"); // Node 1
     write_page(end_state, 1, key, value, 0, ZERO_STR); // Node 2
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullLeafNodesWHENinsertLowerValueTHENproperSplit) {
+    // Prepare case record
+    const uint64_t key = 1;
+    const char value[8] = "XX11111";
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+
+    // Prepare expected end state
+    write_page(end_state, 2, 1, 2, 3, 3, 2);
+    write_page(end_state, 2, key, value, 2, "AA22222");
+    write_page(end_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR);
+
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullLeafNodesWHENinsertHigherValueTHENproperSplit) {
+    // Prepare case record
+    const uint64_t key = 7;
+    const char value[8] = "XX77777";
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+
+    // Prepare expected end state
+    write_page(end_state, 2, 1, 3, 2, 6, 3);
+    write_page(end_state, 2, 2, "AA22222", 3, "BB33333");
+    write_page(end_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(end_state, 1, key, value, 0, ZERO_STR);
+
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertLowerValueTHENproperSplit) {
+    // Prepare case record
+    const uint64_t key = 1;
+    const char value[8] = "XX11111";
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 1, 3, 2, 6, 3);
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(begin_state, 2, 7, "AA77777", 8, "BB88888");
+
+    // Prepare expected end state
+    write_page(end_state, 1, 5, 3, 6, 0, 0);
+    write_page(end_state, 2, key, value, 2, "AA22222");
+    write_page(end_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(end_state, 2, 7, "AA77777", 8, "BB88888");
+    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR);
+    write_page(end_state, 1, 1, 2, 4, 0, 0);
+    write_page(end_state, 1, 2, 6, 3, 0, 0);
+
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertMidValueTHENproperSplit) {
+    // Prepare case record
+    const uint64_t key = 5;
+    const char value[8] = "XX55555";
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 1, 3, 2, 6, 3);
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(begin_state, 2, 7, "AA77777", 8, "BB88888");
+
+    // Prepare expected end state
+    write_page(end_state, 1, 5, 5, 6, 0, 0);
+    write_page(end_state, 2, 2, "AA22222", 3, "BB33333");
+    write_page(end_state, 2, 4, "AA44444", key, value);
+    write_page(end_state, 2, 7, "AA77777", 8, "BB88888");
+    write_page(end_state, 1, 6, "BB66666", 0, ZERO_STR);
+    write_page(end_state, 1, 1, 3, 2, 0, 0);
+    write_page(end_state, 1, 4, 6, 3, 0, 0);
+
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertHigherValueTHENproperSplit) {
+    // Prepare case record
+    const uint64_t key = 9;
+    const char value[8] = "XX99999";
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 1, 3, 2, 6, 3);
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(begin_state, 2, 7, "AA77777", 8, "BB88888");
+
+    // Prepare expected end state
+    write_page(end_state, 1, 5, 6, 6, 0, 0);
+    write_page(end_state, 2, 2, "AA22222", 3, "BB33333");
+    write_page(end_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(end_state, 2, 7, "AA77777", 8, "BB88888");
+    write_page(end_state, 1, key, value, 0, ZERO_STR);
+    write_page(end_state, 1, 1, 3, 2, 0, 0);
+    write_page(end_state, 1, 3, 8, 4, 0, 0);
+
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertLowerMidValueTHENproperCompensation) {
+    // Prepare case record
+    const uint64_t key = 2;
+    const char value[8] = "XX22222";
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 2, 2, "AA11111", 3, "BB33333");
+    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 2, 2, 0, 0);
+    write_page(end_state, 2, 1, "AA11111", key, value);
+    write_page(end_state, 2, 3, "BB33333", 4, "AA44444");
+
+
+    // Do operation
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertHigherValueTHENproperCompensation) {
+    // Prepare case record
+    const uint64_t key = 7;
+    const char value[8] = "XX77777";
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 4, 2, 0, 0);
+    write_page(end_state, 2, 3, "AA33333", 4, "AA44444");
+    write_page(end_state, 2, 6, "BB66666", key, value);
+
 
     // Do operation
     auto ret = container.insert(key, value);
