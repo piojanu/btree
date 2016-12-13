@@ -22,10 +22,12 @@ struct NodeEntry {
     Record record;
 };
 
-template<uint32_t RECORDS_IN_INDEX_NODE>
+template<uint32_t RECORDS_IN_NODE>
 struct Node {
+    Node() = default;
+
     uint64_t usage;
-    NodeEntry node_entries[RECORDS_IN_INDEX_NODE];
+    NodeEntry node_entries[RECORDS_IN_NODE];
     // Offset of outer right node in an inner node or nothing (0) in a leaf.
     uint64_t offset;
 };

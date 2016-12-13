@@ -4,7 +4,7 @@
 #include <array>
 #include <fstream>
 
-const uint32_t RECORDS_IN_INDEX_NODE = 3;
+const uint32_t RECORDS_IN_NODE = 3;
 
 struct BTreeCreationTest : public ::testing::Test {
     void TearDown() override {
@@ -16,16 +16,16 @@ struct BTreeCreationTest : public ::testing::Test {
 };
 
 struct BTreeBasicTest : public ::testing::Test {
-    BTreeBasicTest() : container(&stream), stream(""), value("CB12345"), value_updated("GD12345"), key(123) {}
+    BTreeBasicTest() : container(&stream, 0, 0), stream(""), value("CB12345"), value_updated("GD12345"), key(123) {}
 
-    btree::Container<RECORDS_IN_INDEX_NODE> container;
+    btree::Container<RECORDS_IN_NODE> container;
     std::stringstream stream;
     char value[8], value_updated[8];
     uint64_t key = 123;
 };
 
 struct BTreePrintTest : public ::testing::Test {
-    BTreePrintTest() : container(&stream), stream(""), value("CB12345") {}
+    BTreePrintTest() : container(&stream, 0, 0), stream(""), value("CB12345") {}
 
     void SetUp() override {
         uint64_t key = records.size();
@@ -40,15 +40,15 @@ struct BTreePrintTest : public ::testing::Test {
         }
     }
 
-    btree::Container<RECORDS_IN_INDEX_NODE> container;
+    btree::Container<RECORDS_IN_NODE> container;
     std::stringstream stream;
     std::array<std::pair<uint64_t, char[8]>, 5> records;
     const char value[8];
 };
 
 struct BTreeAdvancedTest : public ::testing::Test {
-    BTreeAdvancedTest() : begin_state(), end_state(), container(&begin_state),
-                          count_end_pages(0) {}
+    BTreeAdvancedTest() : begin_state(), end_state(), container(nullptr),
+                          count_begin_pages(0), count_end_pages(0) {}
 
     void write_page(std::iostream &stream, const uint64_t &usage, const uint64_t &p1,
                                            const uint64_t &one,   const uint64_t &p2,
@@ -60,7 +60,9 @@ struct BTreeAdvancedTest : public ::testing::Test {
         stream.write(reinterpret_cast<const char *>(&two), sizeof(two));
         stream.write(reinterpret_cast<const char *>(&p3), sizeof(p3));
 
-        if (&stream == &end_state) {
+        if (&stream == &begin_state) {
+            count_begin_pages++;
+        } else {
             count_end_pages++;
         }
     }
@@ -77,12 +79,21 @@ struct BTreeAdvancedTest : public ::testing::Test {
         stream.write(v2, sizeof(uint64_t));
         stream.write(reinterpret_cast<const char *>(&zero), sizeof(zero));
 
-        if (&stream == &end_state) {
+        if (&stream == &begin_state) {
+            count_begin_pages++;
+        } else {
             count_end_pages++;
         }
     }
 
+    void createContainer(const uint64_t &height) {
+        container = new btree::Container<2>(&begin_state, height, count_begin_pages);
+    }
+
     void validate() {
+        begin_state.seekg(0, std::ios_base::beg);
+        end_state.seekg(0, std::ios_base::beg);
+
         for (int i = 0; i < count_end_pages; i++) {
             uint64_t value = 0;
             uint64_t expected = 0;
@@ -96,9 +107,15 @@ struct BTreeAdvancedTest : public ::testing::Test {
         }
     }
 
+    void TearDown() override {
+        if (container != nullptr) {
+            delete container;
+        }
+    }
+
     std::stringstream begin_state, end_state;
-    btree::Container<2> container;
-    unsigned int count_end_pages;
+    btree::Container<2> *container;
+    unsigned int count_begin_pages, count_end_pages;
 
     const char ZERO_STR[8] = { '\0' };
 };
@@ -106,7 +123,7 @@ struct BTreeAdvancedTest : public ::testing::Test {
 // ### CREATION TESTS ### //
 
 TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithPathAndDeleteContainerTHENfileExists) {
-    auto container = new btree::Container<RECORDS_IN_INDEX_NODE>(file_name);
+    auto container = new btree::Container<RECORDS_IN_NODE>(file_name);
     delete container;
 
     std::ifstream f(file_name);
@@ -114,88 +131,122 @@ TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithPathAndDeleteContainerTHENfi
 }
 
 TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithStreamAndDeleteContainerTHENproperlyBehave) {
-    auto container = new btree::Container<RECORDS_IN_INDEX_NODE>(&stream);
+    auto container = new btree::Container<RECORDS_IN_NODE>(&stream, 0, 0);
     delete container;
 }
 
 // ### BASIC TESTS ### //
 
-TEST_F(BTreeBasicTest, GIVENemptyContainerWHENinsertTHENreturnSuccess) {
+TEST_F(BTreeBasicTest, GIVENemptyContainerWHENinsertTHENreturnSuccessAndProperContent) {
     auto ret = container.insert(key, value);
-    EXPECT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    btree::Node<RECORDS_IN_NODE> node;
+    stream.seekg(0, std::ios_base::beg);
+    stream.read(reinterpret_cast<char *>(&node), sizeof(btree::Node<RECORDS_IN_NODE>));
+
+    EXPECT_EQ(node.usage, 1);
+
+    EXPECT_EQ(node.node_entries[0].offset, key);
+    EXPECT_STREQ(node.node_entries[0].record.value, value);
+
+    for (int i = 1; i < RECORDS_IN_NODE; i++) {
+        EXPECT_EQ(node.node_entries[i].offset, 0);
+        EXPECT_EQ(node.node_entries[i].record.key, 0);
+        EXPECT_STREQ(node.node_entries[i].record.value, "");
+    }
+
+    EXPECT_EQ(node.offset, 0);
+}
+
+TEST_F(BTreeBasicTest, GIVENcontainerWithItemWHENinsertExistingItemTHENreturnErrorCode) {
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    ret = container.insert(key, value);
+    EXPECT_EQ(ret, btree::RECORD_EXISTS);
 }
 
 TEST_F(BTreeBasicTest, GIVENemptyContainerWHENupdateTHENreturnRecordNotFound) {
     auto ret = container.update(key, value_updated);
-    EXPECT_TRUE(ret == btree::RECORD_NOT_FOUND);
+    EXPECT_EQ(ret, btree::RECORD_NOT_FOUND);
 }
 
 TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENupdateRecordTHENreturnSuccess) {
     auto ret = container.insert(key, value);
-    ASSERT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
 
     ret = container.update(key, value_updated);
-    EXPECT_TRUE(ret == btree::SUCCESS);
+    EXPECT_EQ(ret, btree::SUCCESS);
 }
 
 TEST_F(BTreeBasicTest, GIVENemptyContainerWHENremoveTHENreturnRecordNotFound) {
     auto ret = container.remove(key);
-    EXPECT_TRUE(ret == btree::RECORD_NOT_FOUND);
+    EXPECT_EQ(ret, btree::RECORD_NOT_FOUND);
 }
 
 TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENremoveRecordTHENreturnSuccess) {
     auto ret = container.insert(key, value);
-    ASSERT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
 
     ret = container.remove(key);
-    EXPECT_TRUE(ret == btree::SUCCESS);
+    EXPECT_EQ(ret, btree::SUCCESS);
 }
 
-TEST_F(BTreeBasicTest, GIVENemptyContainerWHENgetValueTHENreturnRecordNotFound) {
+TEST_F(BTreeBasicTest, GIVENemptyContainerWHENgetValueTHENreturnEmptyStorage) {
     char ret_value[8];
     auto ret = container.get_value(key, ret_value);
-    EXPECT_TRUE(ret == btree::RECORD_NOT_FOUND);
+    EXPECT_EQ(ret, btree::EMPTY_STORAGE);
 }
 
 TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENgetValueTHENreturnSuccessAndproperValue) {
     auto ret = container.insert(key, value);
-    ASSERT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
 
     char ret_value[8];
     ret = container.get_value(key, ret_value);
-    EXPECT_TRUE(ret == btree::SUCCESS);
+    EXPECT_EQ(ret, btree::SUCCESS);
     EXPECT_STREQ(value, ret_value);
+}
+
+TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENgetValueOfNotExistingKeyTHENreturnRecordNotFound) {
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    char ret_value[8];
+    ret = container.get_value(key + 1, ret_value);
+    EXPECT_EQ(ret, btree::RECORD_NOT_FOUND);
 }
 
 TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENupdateRecordAndGetValueTHENreturnSuccessAndproperValue) {
     auto ret = container.insert(key, value);
-    ASSERT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
 
     ret = container.update(key, value_updated);
-    ASSERT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
 
     char ret_value[8];
     ret = container.get_value(key, ret_value);
-    EXPECT_TRUE(ret == btree::SUCCESS);
+    EXPECT_EQ(ret, btree::SUCCESS);
     EXPECT_STREQ(value_updated, ret_value);
 }
 
-TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENremoveRecordAndGetValueTHENreturnRecordNotFound) {
+TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENremoveRecordAndGetValueTHENreturnEmptyStorage) {
     auto ret = container.insert(key, value);
-    ASSERT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
 
     ret = container.remove(key);
-    ASSERT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
 
     char ret_value[8];
     ret = container.get_value(key, ret_value);
-    EXPECT_TRUE(ret == btree::RECORD_NOT_FOUND);
+    EXPECT_EQ(ret, btree::EMPTY_STORAGE);
 }
 
 TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintDataOrderedTHENproperPrint) {
     std::stringstream stream;
     auto ret = container.print_data_ordered(stream);
-    ASSERT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
 
     for (auto i = static_cast<int64_t >(records.size()) - 1; i >= 0; i--) {
         uint64_t key;
@@ -212,7 +263,7 @@ TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintDataOrderedTHENproperP
 TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBinaryPrint) {
     std::stringstream stream;
     auto ret = container.print_raw_file(stream);
-    ASSERT_TRUE(ret == btree::SUCCESS);
+    ASSERT_EQ(ret, btree::SUCCESS);
 
     uint64_t *data = reinterpret_cast<uint64_t *>(std::malloc(sizeof(uint64_t)));
     char data_ch[8];
@@ -277,12 +328,13 @@ TEST_F(BTreeAdvancedTest, GIVENrootNodeWithSpaceWHENinsertValueTHENproperInserti
 
     // Prepare case begin state
     write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
+    createContainer(1);
 
     // Prepare expected end state
     write_page(end_state, 2, 3, "AA33333", key, value); // Root
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -298,6 +350,7 @@ TEST_F(BTreeAdvancedTest, GIVENleafsWithSpaceWHENinsertLowerValueTHENproperInser
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
     write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
     write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
+    createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 3, 2, 0, 0); // Root
@@ -306,7 +359,7 @@ TEST_F(BTreeAdvancedTest, GIVENleafsWithSpaceWHENinsertLowerValueTHENproperInser
 
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -322,6 +375,7 @@ TEST_F(BTreeAdvancedTest, GIVENleafsWithSpaceWHENinsertHigherValueTHENproperInse
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
     write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
     write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
+    createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 3, 2, 0, 0); // Root
@@ -330,7 +384,7 @@ TEST_F(BTreeAdvancedTest, GIVENleafsWithSpaceWHENinsertHigherValueTHENproperInse
 
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -344,6 +398,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertLowerValueTHENproperSplit) 
 
     // Prepare case begin state
     write_page(begin_state, 2, 3, "AA33333", 7, "BB77777");
+    createContainer(1);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 3, 2, 0, 0); // Root
@@ -351,7 +406,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertLowerValueTHENproperSplit) 
     write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR); // Node 2
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -365,6 +420,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertMidValueTHENproperSplit) {
 
     // Prepare case begin state
     write_page(begin_state, 2, 3, "AA33333", 7, "BB77777");
+    createContainer(1);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, key, 2, 0, 0); // Root
@@ -372,7 +428,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertMidValueTHENproperSplit) {
     write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR); // Node 2
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -386,6 +442,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertHigherValueTHENproperSplit)
 
     // Prepare case begin state
     write_page(begin_state, 2, 3, "AA33333", 7, "BB77777");
+    createContainer(1);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 7, 2, 0, 0); // Root
@@ -393,7 +450,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertHigherValueTHENproperSplit)
     write_page(end_state, 1, key, value, 0, ZERO_STR); // Node 2
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -409,6 +466,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullLeafNodesWHENinsertLowerValueTHENproperSplit)
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
     write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
     write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+    createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 2, 1, 2, 3, 3, 2);
@@ -418,7 +476,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullLeafNodesWHENinsertLowerValueTHENproperSplit)
 
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -434,6 +492,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullLeafNodesWHENinsertHigherValueTHENproperSplit
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
     write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
     write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+    createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 2, 1, 3, 2, 6, 3);
@@ -443,7 +502,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullLeafNodesWHENinsertHigherValueTHENproperSplit
 
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -460,6 +519,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertLowerValueTHENproperSpli
     write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
     write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
     write_page(begin_state, 2, 7, "AA77777", 8, "BB88888");
+    createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 5, 3, 6, 0, 0);
@@ -472,7 +532,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertLowerValueTHENproperSpli
 
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -489,6 +549,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertMidValueTHENproperSplit)
     write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
     write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
     write_page(begin_state, 2, 7, "AA77777", 8, "BB88888");
+    createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 5, 5, 6, 0, 0);
@@ -501,7 +562,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertMidValueTHENproperSplit)
 
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -518,6 +579,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertHigherValueTHENproperSpl
     write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
     write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
     write_page(begin_state, 2, 7, "AA77777", 8, "BB88888");
+    createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 5, 6, 6, 0, 0);
@@ -530,7 +592,7 @@ TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertHigherValueTHENproperSpl
 
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -546,6 +608,7 @@ TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertLowerMidV
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
     write_page(begin_state, 2, 2, "AA11111", 3, "BB33333");
     write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
+    createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 2, 2, 0, 0);
@@ -554,7 +617,7 @@ TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertLowerMidV
 
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
@@ -570,6 +633,7 @@ TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertHigherVal
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
     write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
     write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+    createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 4, 2, 0, 0);
@@ -578,7 +642,7 @@ TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertHigherVal
 
 
     // Do operation
-    auto ret = container.insert(key, value);
+    auto ret = container->insert(key, value);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state

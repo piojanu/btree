@@ -65,11 +65,19 @@ TEST_F(StorageBasicTest, GIVENstorageWHENchangeAndGetHeightTHENproperHeight) {
     EXPECT_EQ(height, storage.get_height());
 }
 
+TEST_F(StorageBasicTest, GIVENemptyStorageWHENfindNodeKey2THENreturnErrorCode) {
+    height = 0;
+    auto node = new btree::ExtendedNode<RECORDS_IN_INDEX_NODE>[height];
+    auto ret = storage.find_node(2, node);
+    EXPECT_EQ(ret, btree::EMPTY_STORAGE);
+}
+
 TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey2THENproperlyOpenedNodePath) {
     auto node = new btree::ExtendedNode<RECORDS_IN_INDEX_NODE>[height];
     auto ret = storage.find_node(2, node);
     ASSERT_EQ(ret, btree::SUCCESS);
 
+    EXPECT_EQ(0, node[0].ptr);
     EXPECT_EQ(0, node[0].index);
     EXPECT_EQ(values[0], node[0].node.usage);
     EXPECT_EQ(values[1], node[0].node.node_entries[0].offset);
@@ -80,6 +88,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey2THENproperlyOpened
     EXPECT_EQ(values[6], node[0].node.node_entries[2].record.key);
     EXPECT_EQ(values[7], node[0].node.offset);
 
+    EXPECT_EQ(1, node[1].ptr);
     EXPECT_EQ(1, node[1].index);
     EXPECT_EQ(values[8], node[1].node.usage);
     EXPECT_EQ(values[8 + 1], node[1].node.node_entries[0].offset);
@@ -96,6 +105,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey5THENproperlyOpened
     auto ret = storage.find_node(5, node);
     ASSERT_EQ(ret, btree::SUCCESS);
 
+    EXPECT_EQ(0, node[0].ptr);
     EXPECT_EQ(1, node[0].index);
     EXPECT_EQ(values[0], node[0].node.usage);
     EXPECT_EQ(values[1], node[0].node.node_entries[0].offset);
@@ -106,6 +116,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey5THENproperlyOpened
     EXPECT_EQ(values[6], node[0].node.node_entries[2].record.key);
     EXPECT_EQ(values[7], node[0].node.offset);
 
+    EXPECT_EQ(2, node[1].ptr);
     EXPECT_EQ(2, node[1].index);
     EXPECT_EQ(values[16], node[1].node.usage);
     EXPECT_EQ(values[16 + 1], node[1].node.node_entries[0].offset);
@@ -122,6 +133,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey6THENproperlyOpened
     auto ret = storage.find_node(6, node);
     ASSERT_EQ(ret, btree::SUCCESS);
 
+    EXPECT_EQ(0, node[0].ptr);
     EXPECT_EQ(1, node[0].index);
     EXPECT_EQ(values[0], node[0].node.usage);
     EXPECT_EQ(values[1], node[0].node.node_entries[0].offset);
@@ -132,6 +144,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey6THENproperlyOpened
     EXPECT_EQ(values[6], node[0].node.node_entries[2].record.key);
     EXPECT_EQ(values[7], node[0].node.offset);
 
+    EXPECT_EQ(2, node[1].ptr);
     EXPECT_EQ(3, node[1].index);
     EXPECT_EQ(values[16], node[1].node.usage);
     EXPECT_EQ(values[16 + 1], node[1].node.node_entries[0].offset);

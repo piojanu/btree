@@ -8,32 +8,38 @@
 
 namespace btree {
 
-template<uint32_t RECORDS_IN_INDEX_NODE>
+template<uint32_t RECORDS_IN_NODE>
 struct ExtendedNode {
+    uint64_t ptr;
     uint32_t index;
-    Node<RECORDS_IN_INDEX_NODE> node;
+    Node<RECORDS_IN_NODE> node;
 };
 
-template<uint32_t RECORDS_IN_INDEX_NODE>
+template<uint32_t RECORDS_IN_NODE>
 class Storage {
 public:
-    Storage(std::iostream *_stream, const uint64_t &_height, const uint64_t nodes_count = 0) : stream(_stream), height(_height),
+    Storage(std::iostream *_stream, const uint64_t &_height, const uint64_t &nodes_count = 0) : stream(_stream), height(_height),
                                                                free_offsets(), end_offset(nodes_count) {}
 
     // Returns error code or btree::SUCCESS.
-    int find_node(uint64_t key, ExtendedNode<RECORDS_IN_INDEX_NODE> *ext_node) const {
-        uint64_t node_offset = 0;
+    int find_node(uint64_t key, ExtendedNode<RECORDS_IN_NODE> *ext_node) const {
+        if (height == 0) {
+            return btree::EMPTY_STORAGE;
+        }
+
+        uint64_t ptr = 0;
         for (int i = 0; i < height; i++) {
-            auto ret = open_node(node_offset, &ext_node[i].node);
+            auto ret = open_node(ptr, &ext_node[i].node);
             if (ret != btree::SUCCESS) {
                 return ret;
             }
 
+            ext_node[i].ptr = ptr;
             ext_node[i].index = binary_search(key, &ext_node[i].node, i + 1 == height ? true : false);
-            if (ext_node[i].index < RECORDS_IN_INDEX_NODE) {
-                node_offset = ext_node[i].node.node_entries[ext_node[i].index].offset;
+            if (ext_node[i].index < RECORDS_IN_NODE) {
+                ptr = ext_node[i].node.node_entries[ext_node[i].index].offset;
             } else {
-                node_offset = ext_node[i].node.offset;
+                ptr = ext_node[i].node.offset;
             }
         }
 
@@ -41,14 +47,14 @@ public:
     }
 
     // Returns error code or btree::SUCCESS.
-    int open_node(uint64_t offset, Node<RECORDS_IN_INDEX_NODE> *node) const {
+    int open_node(uint64_t offset, Node<RECORDS_IN_NODE> *node) const {
         if (offset >= end_offset || free_offsets.find(offset) != free_offsets.end()) {
             return INVALID_OFFSET;
         }
 
         try {
-            stream->seekg(offset * sizeof(Node<RECORDS_IN_INDEX_NODE>), std::ios_base::beg);
-            stream->read(reinterpret_cast<char *>(node), sizeof(Node<RECORDS_IN_INDEX_NODE>));
+            stream->seekg(offset * sizeof(Node<RECORDS_IN_NODE>), std::ios_base::beg);
+            stream->read(reinterpret_cast<char *>(node), sizeof(Node<RECORDS_IN_NODE>));
             g_iinfo.reads++;
         }
         catch (...) {
@@ -61,7 +67,7 @@ public:
     // Writes node object into specified offset.
     // Write can't be after end offset.
     // Write can't override existing node,
-    int write_node(uint64_t offset, Node<RECORDS_IN_INDEX_NODE> *node, bool force = false) {
+    int write_node(uint64_t offset, Node<RECORDS_IN_NODE> *node, bool force = false) {
         if (offset == end_offset) {
             end_offset++;
         } else if (offset < end_offset && (force || free_offsets.find(offset) != free_offsets.end())) {
@@ -71,8 +77,8 @@ public:
         }
 
         try {
-            stream->seekp(offset * sizeof(Node<RECORDS_IN_INDEX_NODE>), std::ios_base::beg);
-            stream->write(reinterpret_cast<char *>(node), sizeof(Node<RECORDS_IN_INDEX_NODE>));
+            stream->seekp(offset * sizeof(Node<RECORDS_IN_NODE>), std::ios_base::beg);
+            stream->write(reinterpret_cast<char *>(node), sizeof(Node<RECORDS_IN_NODE>));
             g_iinfo.writes++;
         }
         catch (...) {
@@ -93,7 +99,7 @@ public:
     }
 
     // Returns position where record is or where it should be (first bigger record).
-    static uint32_t binary_search(uint64_t key, Node<RECORDS_IN_INDEX_NODE> *node, bool leaf = false) {
+    static uint32_t binary_search(uint64_t key, Node<RECORDS_IN_NODE> *node, bool leaf = false) {
         auto get_key = [&](uint32_t i) {
             if (!leaf) {
                 return node->node_entries[i].record.key;

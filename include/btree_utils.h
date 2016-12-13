@@ -10,6 +10,8 @@ enum : int {
     RECORD_NOT_FOUND = -1,
     SOMETHING_WENT_WRONG = -2,
     INVALID_OFFSET = -3,
+    RECORD_EXISTS = -4,
+    EMPTY_STORAGE = -5,
     NOT_IMPLEMENTED = -1000
 };
 
