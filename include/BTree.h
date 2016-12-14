@@ -33,6 +33,7 @@ public:
         index_data = stream;
         height = _height;
         storage = new Storage<RECORDS_IN_NODE>(index_data, height, nodes_count);
+        good = true;
     }
 
     ~Container() {
@@ -48,9 +49,7 @@ public:
     int insert(uint64_t key, const char value[8]) {
         if (height == 0) { // Empty tree
             auto root_leaf = Node<RECORDS_IN_NODE>();
-            root_leaf.usage = 1;
-            root_leaf.node_entries[0].offset = key;
-            strcpy(root_leaf.node_entries[0].record.value, value);
+            fill_node_entry(&root_leaf, 0, key, value);
 
             auto ret = storage->write_node(0, &root_leaf);
             height = 1;
@@ -71,16 +70,14 @@ public:
             }
 
             if (leaf->node.usage < RECORDS_IN_NODE) { // Leaf has space for new record.
-                // Make place for new record. Shift higher values to right.
-                for (int64_t i = leaf->node.usage - 1; i >= leaf->index; i--) {
-                    memcpy(&leaf->node.node_entries[i + 1], &leaf->node.node_entries[i], sizeof(NodeEntry));
+                ret = shift_to_right(&leaf->node, leaf->index);
+                if (ret != SUCCESS) {
+                    goto ERROR_HANDLER;
                 }
 
-                leaf->node.node_entries[leaf->index].offset = key;
-                strcpy(leaf->node.node_entries[leaf->index].record.value, value);
-                leaf->node.usage++;
+                fill_node_entry(&leaf->node, leaf->index, key, value);
 
-                auto ret = storage->write_node(leaf->ptr, &leaf->node, true);
+                ret = storage->write_node(leaf->ptr, &leaf->node, true);
             } else { // Leaf doesn't have space for new record.
                 ret = NOT_IMPLEMENTED;
                 goto ERROR_HANDLER;
@@ -138,6 +135,28 @@ ERROR_HANDLER:
     // Returns true if object is properly initialised.
     bool is_good() {
         return good;
+    }
+
+protected:
+    // Makes place for new record. Shift higher values to right.
+    // NOTE: There has to be space for this shift!
+    inline int shift_to_right(Node<RECORDS_IN_NODE> *leaf, uint32_t start_index, uint32_t step = 1) {
+        if (leaf->usage + step > RECORDS_IN_NODE) {
+            return NOT_ENOUGH_SPACE;
+        }
+
+        for (int64_t i = leaf->usage - 1; i >= start_index; i--) {
+            memcpy(&leaf->node_entries[i + step], &leaf->node_entries[i], sizeof(NodeEntry));
+        }
+
+        return SUCCESS;
+    }
+
+    // Fills entry in leaf at specified index and increments usage.
+    inline void fill_node_entry(Node<RECORDS_IN_NODE> *leaf, uint32_t entry_index, uint64_t key, const char value[8]) {
+        leaf->usage++;
+        leaf->node_entries[entry_index].offset = key;
+        strcpy(leaf->node_entries[entry_index].record.value, value);
     }
 
 private:

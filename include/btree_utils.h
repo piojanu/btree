@@ -12,6 +12,7 @@ enum : int {
     INVALID_OFFSET = -3,
     RECORD_EXISTS = -4,
     EMPTY_STORAGE = -5,
+    NOT_ENOUGH_SPACE = -6,
     NOT_IMPLEMENTED = -1000
 };
 

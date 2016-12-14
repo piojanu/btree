@@ -124,6 +124,7 @@ struct BTreeAdvancedTest : public ::testing::Test {
 
 TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithPathAndDeleteContainerTHENfileExists) {
     auto container = new btree::Container<RECORDS_IN_NODE>(file_name);
+    ASSERT_TRUE(container->is_good());
     delete container;
 
     std::ifstream f(file_name);
@@ -132,6 +133,7 @@ TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithPathAndDeleteContainerTHENfi
 
 TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithStreamAndDeleteContainerTHENproperlyBehave) {
     auto container = new btree::Container<RECORDS_IN_NODE>(&stream, 0, 0);
+    EXPECT_TRUE(container->is_good());
     delete container;
 }
 
@@ -323,15 +325,15 @@ TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBinar
 
 TEST_F(BTreeAdvancedTest, GIVENrootNodeWithSpaceWHENinsertValueTHENproperInsertion) {
     // Prepare case record
-    const uint64_t key = 7;
-    const char value[8] = "XX77777";
+    const uint64_t key = 1;
+    const char value[8] = "XX11111";
 
     // Prepare case begin state
     write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
     createContainer(1);
 
     // Prepare expected end state
-    write_page(end_state, 2, 3, "AA33333", key, value); // Root
+    write_page(end_state, 2, key, value, 3, "AA33333"); // Root
 
     // Do operation
     auto ret = container->insert(key, value);
