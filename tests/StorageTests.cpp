@@ -4,9 +4,9 @@
 #include <sstream>
 
 struct StorageBasicTest : public ::testing::Test {
-    StorageBasicTest() : values{1, 1, 2, 2, 0, 0, 0, 0,
-                                2, 1, 1, 2, 2, 0, 0, 0,
-                                3, 3, 3, 4, 4, 5, 5, 0}, height(2),
+    StorageBasicTest() : values{1, 1, 2, 2, 0, 0, 0, 0, 0,
+                                2, 1, 1, 2, 2, 0, 0, 0, 0,
+                                3, 3, 3, 4, 4, 5, 5, 0, 0}, height(2),
                          stream(""), node(), storage(&stream, height, nodes_count) {
         for (uint64_t value : values) {
             stream.write(reinterpret_cast<char *>(&value), sizeof(value));
@@ -16,7 +16,7 @@ struct StorageBasicTest : public ::testing::Test {
     }
 
     std::stringstream stream;
-    uint64_t values[24], nodes_count = sizeof(values) / sizeof(btree::Node<RECORDS_IN_INDEX_NODE>), height;
+    uint64_t values[27], nodes_count = sizeof(values) / sizeof(btree::Node<RECORDS_IN_INDEX_NODE>), height;
     static const uint32_t RECORDS_IN_INDEX_NODE = 3;
 
     btree::Node<RECORDS_IN_INDEX_NODE> node;
@@ -36,7 +36,8 @@ struct StorageBinarySearchTest : public ::testing::Test {
         node.node_entries[3].record.key = 12;
         node.node_entries[4].offset = 5;
         node.node_entries[4].record.key = 20;
-        node.offset = 6;
+        node.node_entries[5].offset = 6;
+        node.node_entries[5].record.key = 0;
 
         leaf_node.usage = 7;
         leaf_node.node_entries[0].offset = 4;
@@ -53,7 +54,8 @@ struct StorageBinarySearchTest : public ::testing::Test {
         leaf_node.node_entries[5].record.value[0] = 'b';
         leaf_node.node_entries[6].offset = 90;
         leaf_node.node_entries[6].record.value[0] = 'a';
-        leaf_node.offset = 0;
+        leaf_node.node_entries[7].offset = 5;
+        leaf_node.node_entries[7].record.key = 0;
     }
 
     static const uint32_t RECORDS_IN_INDEX_NODE = 7;
@@ -86,18 +88,20 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey2THENproperlyOpened
     EXPECT_EQ(values[4], node[0].node.node_entries[1].record.key);
     EXPECT_EQ(values[5], node[0].node.node_entries[2].offset);
     EXPECT_EQ(values[6], node[0].node.node_entries[2].record.key);
-    EXPECT_EQ(values[7], node[0].node.offset);
+    EXPECT_EQ(values[7], node[0].node.node_entries[3].offset);
+    EXPECT_EQ(values[8], node[0].node.node_entries[3].record.key);
 
     EXPECT_EQ(1, node[1].offset);
     EXPECT_EQ(1, node[1].index);
-    EXPECT_EQ(values[8], node[1].node.usage);
-    EXPECT_EQ(values[8 + 1], node[1].node.node_entries[0].offset);
-    EXPECT_EQ(values[8 + 2], node[1].node.node_entries[0].record.key);
-    EXPECT_EQ(values[8 + 3], node[1].node.node_entries[1].offset);
-    EXPECT_EQ(values[8 + 4], node[1].node.node_entries[1].record.key);
-    EXPECT_EQ(values[8 + 5], node[1].node.node_entries[2].offset);
-    EXPECT_EQ(values[8 + 6], node[1].node.node_entries[2].record.key);
-    EXPECT_EQ(values[8 + 7], node[1].node.offset);
+    EXPECT_EQ(values[9], node[1].node.usage);
+    EXPECT_EQ(values[9 + 1], node[1].node.node_entries[0].offset);
+    EXPECT_EQ(values[9 + 2], node[1].node.node_entries[0].record.key);
+    EXPECT_EQ(values[9 + 3], node[1].node.node_entries[1].offset);
+    EXPECT_EQ(values[9 + 4], node[1].node.node_entries[1].record.key);
+    EXPECT_EQ(values[9 + 5], node[1].node.node_entries[2].offset);
+    EXPECT_EQ(values[9 + 6], node[1].node.node_entries[2].record.key);
+    EXPECT_EQ(values[9 + 7], node[1].node.node_entries[3].offset);
+    EXPECT_EQ(values[9 + 8], node[1].node.node_entries[3].record.key);
 }
 
 TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey5THENproperlyOpenedNodePath) {
@@ -114,18 +118,20 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey5THENproperlyOpened
     EXPECT_EQ(values[4], node[0].node.node_entries[1].record.key);
     EXPECT_EQ(values[5], node[0].node.node_entries[2].offset);
     EXPECT_EQ(values[6], node[0].node.node_entries[2].record.key);
-    EXPECT_EQ(values[7], node[0].node.offset);
+    EXPECT_EQ(values[7], node[0].node.node_entries[3].offset);
+    EXPECT_EQ(values[8], node[0].node.node_entries[3].record.key);
 
     EXPECT_EQ(2, node[1].offset);
     EXPECT_EQ(2, node[1].index);
-    EXPECT_EQ(values[16], node[1].node.usage);
-    EXPECT_EQ(values[16 + 1], node[1].node.node_entries[0].offset);
-    EXPECT_EQ(values[16 + 2], node[1].node.node_entries[0].record.key);
-    EXPECT_EQ(values[16 + 3], node[1].node.node_entries[1].offset);
-    EXPECT_EQ(values[16 + 4], node[1].node.node_entries[1].record.key);
-    EXPECT_EQ(values[16 + 5], node[1].node.node_entries[2].offset);
-    EXPECT_EQ(values[16 + 6], node[1].node.node_entries[2].record.key);
-    EXPECT_EQ(values[16 + 7], node[1].node.offset);
+    EXPECT_EQ(values[18], node[1].node.usage);
+    EXPECT_EQ(values[18 + 1], node[1].node.node_entries[0].offset);
+    EXPECT_EQ(values[18 + 2], node[1].node.node_entries[0].record.key);
+    EXPECT_EQ(values[18 + 3], node[1].node.node_entries[1].offset);
+    EXPECT_EQ(values[18 + 4], node[1].node.node_entries[1].record.key);
+    EXPECT_EQ(values[18 + 5], node[1].node.node_entries[2].offset);
+    EXPECT_EQ(values[18 + 6], node[1].node.node_entries[2].record.key);
+    EXPECT_EQ(values[18 + 7], node[1].node.node_entries[3].offset);
+    EXPECT_EQ(values[18 + 8], node[1].node.node_entries[3].record.key);
 }
 
 TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey6THENproperlyOpenedNodePath) {
@@ -142,18 +148,20 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey6THENproperlyOpened
     EXPECT_EQ(values[4], node[0].node.node_entries[1].record.key);
     EXPECT_EQ(values[5], node[0].node.node_entries[2].offset);
     EXPECT_EQ(values[6], node[0].node.node_entries[2].record.key);
-    EXPECT_EQ(values[7], node[0].node.offset);
+    EXPECT_EQ(values[7], node[0].node.node_entries[3].offset);
+    EXPECT_EQ(values[8], node[0].node.node_entries[3].record.key);
 
     EXPECT_EQ(2, node[1].offset);
     EXPECT_EQ(3, node[1].index);
-    EXPECT_EQ(values[16], node[1].node.usage);
-    EXPECT_EQ(values[16 + 1], node[1].node.node_entries[0].offset);
-    EXPECT_EQ(values[16 + 2], node[1].node.node_entries[0].record.key);
-    EXPECT_EQ(values[16 + 3], node[1].node.node_entries[1].offset);
-    EXPECT_EQ(values[16 + 4], node[1].node.node_entries[1].record.key);
-    EXPECT_EQ(values[16 + 5], node[1].node.node_entries[2].offset);
-    EXPECT_EQ(values[16 + 6], node[1].node.node_entries[2].record.key);
-    EXPECT_EQ(values[16 + 7], node[1].node.offset);
+    EXPECT_EQ(values[18], node[1].node.usage);
+    EXPECT_EQ(values[18 + 1], node[1].node.node_entries[0].offset);
+    EXPECT_EQ(values[18 + 2], node[1].node.node_entries[0].record.key);
+    EXPECT_EQ(values[18 + 3], node[1].node.node_entries[1].offset);
+    EXPECT_EQ(values[18 + 4], node[1].node.node_entries[1].record.key);
+    EXPECT_EQ(values[18 + 5], node[1].node.node_entries[2].offset);
+    EXPECT_EQ(values[18 + 6], node[1].node.node_entries[2].record.key);
+    EXPECT_EQ(values[18 + 7], node[1].node.node_entries[3].offset);
+    EXPECT_EQ(values[18 + 8], node[1].node.node_entries[3].record.key);
 }
 
 TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENopenNotExistingNodeTHENreturnsErrorCode) {
@@ -166,14 +174,15 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENopenNodeTHENproperlyOpenedNode
     auto ret = storage.open_node(1, &node);
     ASSERT_EQ(ret, btree::SUCCESS);
 
-    EXPECT_EQ(values[8], node.usage);
-    EXPECT_EQ(values[8 + 1], node.node_entries[0].offset);
-    EXPECT_EQ(values[8 + 2], node.node_entries[0].record.key);
-    EXPECT_EQ(values[8 + 3], node.node_entries[1].offset);
-    EXPECT_EQ(values[8 + 4], node.node_entries[1].record.key);
-    EXPECT_EQ(values[8 + 5], node.node_entries[2].offset);
-    EXPECT_EQ(values[8 + 6], node.node_entries[2].record.key);
-    EXPECT_EQ(values[8 + 7], node.offset);
+    EXPECT_EQ(values[9], node.usage);
+    EXPECT_EQ(values[9 + 1], node.node_entries[0].offset);
+    EXPECT_EQ(values[9 + 2], node.node_entries[0].record.key);
+    EXPECT_EQ(values[9 + 3], node.node_entries[1].offset);
+    EXPECT_EQ(values[9 + 4], node.node_entries[1].record.key);
+    EXPECT_EQ(values[9 + 5], node.node_entries[2].offset);
+    EXPECT_EQ(values[9 + 6], node.node_entries[2].record.key);
+    EXPECT_EQ(values[9 + 7], node.node_entries[3].offset);
+    EXPECT_EQ(values[9 + 8], node.node_entries[3].record.key);
 
     EXPECT_EQ(btree::g_iinfo.reads, 1);
 }

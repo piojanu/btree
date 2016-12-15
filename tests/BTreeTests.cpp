@@ -53,12 +53,15 @@ struct BTreeAdvancedTest : public ::testing::Test {
     void write_page(std::iostream &stream, const uint64_t &usage, const uint64_t &p1,
                                            const uint64_t &one,   const uint64_t &p2,
                                            const uint64_t &two,   const uint64_t &p3) {
+        uint64_t zero = 0;
+
         stream.write(reinterpret_cast<const char *>(&usage), sizeof(usage));
         stream.write(reinterpret_cast<const char *>(&p1), sizeof(p1));
         stream.write(reinterpret_cast<const char *>(&one), sizeof(one));
         stream.write(reinterpret_cast<const char *>(&p2), sizeof(p2));
         stream.write(reinterpret_cast<const char *>(&two), sizeof(two));
         stream.write(reinterpret_cast<const char *>(&p3), sizeof(p3));
+        stream.write(reinterpret_cast<const char *>(&zero), sizeof(zero));
 
         if (&stream == &begin_state) {
             count_begin_pages++;
@@ -77,6 +80,7 @@ struct BTreeAdvancedTest : public ::testing::Test {
         stream.write(v1, sizeof(uint64_t));
         stream.write(reinterpret_cast<const char *>(&two), sizeof(two));
         stream.write(v2, sizeof(uint64_t));
+        stream.write(reinterpret_cast<const char *>(&zero), sizeof(zero));
         stream.write(reinterpret_cast<const char *>(&zero), sizeof(zero));
 
         if (&stream == &begin_state) {
@@ -152,13 +156,16 @@ TEST_F(BTreeBasicTest, GIVENemptyContainerWHENinsertTHENreturnSuccessAndProperCo
     EXPECT_EQ(node.node_entries[0].offset, key);
     EXPECT_STREQ(node.node_entries[0].record.value, value);
 
-    for (int i = 1; i < RECORDS_IN_NODE; i++) {
+    for (int i = 1; i <= RECORDS_IN_NODE; i++) {
         EXPECT_EQ(node.node_entries[i].offset, 0);
         EXPECT_EQ(node.node_entries[i].record.key, 0);
         EXPECT_STREQ(node.node_entries[i].record.value, "");
     }
+}
 
-    EXPECT_EQ(node.offset, 0);
+TEST_F(BTreeBasicTest, GIVENemptyContainerWHENinsertKeyZeroTHENreturnErrorCode) {
+    auto ret = container.insert(0, value);
+    EXPECT_EQ(ret, btree::INVALID_KEY);
 }
 
 TEST_F(BTreeBasicTest, GIVENcontainerWithItemWHENinsertExistingItemTHENreturnErrorCode) {

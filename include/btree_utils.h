@@ -13,6 +13,7 @@ enum : int {
     RECORD_EXISTS = -4,
     EMPTY_STORAGE = -5,
     NOT_ENOUGH_SPACE = -6,
+    INVALID_KEY = -7,
     NOT_IMPLEMENTED = -1000
 };
 

@@ -48,9 +48,14 @@ public:
 
     // Insert record into container.
     int insert(uint64_t key, const char value[8]) {
+        if (key == 0) {
+            return INVALID_KEY;
+        }
+
         if (height == 0) { // Empty tree
             Node<RECORDS_IN_NODE> root_leaf{};
-            fill_leaf_entry(&root_leaf, 0, key, value);
+            fill_leaf_entry(root_leaf.node_entries, key, value);
+            root_leaf.usage++;
 
             auto ret = storage->write_node(0, &root_leaf);
             height = 1;
@@ -76,7 +81,8 @@ public:
                     goto RETURN;
                 }
 
-                fill_leaf_entry(&leaf->node, leaf->index, key, value);
+                fill_leaf_entry(leaf->node.node_entries + leaf->index, key, value);
+                leaf->node.usage++;
 
                 ret = storage->write_node(leaf->offset, &leaf->node, true);
             } else { // Leaf doesn't have space for new record.
@@ -97,7 +103,8 @@ public:
                     for (int i = 0; i < left_usage; i++) {
                         // Check if we are copying leaf new entry.
                         if (leaf_iter == leaf->index && !new_entry_copied) {
-                            fill_leaf_entry(&ext_node[0].node, i, key, value);
+                            fill_leaf_entry(ext_node[0].node.node_entries + i, key, value);
+                            ext_node[0].node.usage++;
                             new_entry_copied = true;
                         } else {
                             memcpy(&ext_node[0].node.node_entries[i], &leaf->node.node_entries[leaf_iter],
@@ -111,7 +118,8 @@ public:
                     for (int i = 0; i < right_usage; i++) {
                         // Check if we are copying leaf new entry.
                         if (leaf_iter == leaf->index && !new_entry_copied) {
-                            fill_leaf_entry(&ext_node[1].node, i, key, value);
+                            fill_leaf_entry(ext_node[1].node.node_entries + i, key, value);
+                            ext_node[1].node.usage++;
                             new_entry_copied = true;
                         } else {
                             memcpy(&ext_node[1].node.node_entries[i], &leaf->node.node_entries[leaf_iter],
@@ -139,42 +147,11 @@ public:
 
                 // !!! Fetch brothers.
                 ExtendedNode<RECORDS_IN_NODE> left_brother{}, right_brother{};
-                // TODO: This could be optimised. There is no need to fetch always both brothers.
                 fetch_brothers(leaf, &left_brother, &right_brother);
 
                 // Check brothers if exist and have space. If so, compensate.
                 if (left_brother.node.usage > 0 && left_brother.node.usage < RECORDS_IN_NODE) {
-                    auto sum_usage = leaf->node.usage + left_brother.node.usage + 1;
-                    auto new_usage = static_cast<uint64_t>(sum_usage / 2);
-
-                    auto leaf_iter = 0u;
-                    auto new_entry_copied = false;
-                    for (auto i = left_brother.node.usage; i < new_usage; i++) {
-                        // Check if we are copying leaf new entry.
-                        if (leaf_iter == leaf->index && !new_entry_copied) {
-                            fill_leaf_entry(&left_brother.node, i, key, value);
-                            new_entry_copied = true;
-                        } else {
-                            memcpy(&left_brother.node.node_entries[i], &leaf->node.node_entries[leaf_iter],
-                                   sizeof(NodeEntry));
-                            leaf_iter++;
-                        }
-                    }
-
-                    if (!new_entry_copied) {
-                        shift_to_left(&leaf->node, leaf->index);
-                        fill_leaf_entry(&leaf->node, leaf->index - 1, key, value);
-                        leaf_iter--;
-                    }
-
-                    // Shift leaf to left edge
-                    if (leaf_iter > 0) {
-                        shift_to_left(&leaf->node, leaf->node.usage, leaf_iter, true);
-                    }
-
-                    // Set new nodes usage
-                    leaf->node.usage = sum_usage - new_usage;
-                    left_brother.node.usage = new_usage;
+                    compensate(&left_brother.node, &leaf->node, {key, value}, leaf->index, true);
 
                     // Set new parent
                     auto parent = leaf - 1;
@@ -189,41 +166,7 @@ public:
                     ret = SUCCESS;
                     goto RETURN;
                 } else if (right_brother.node.usage > 0 && right_brother.node.usage < RECORDS_IN_NODE) {
-                    auto sum_usage = leaf->node.usage + right_brother.node.usage + 1;
-                    auto new_usage = static_cast<uint64_t>(sum_usage / 2);
-                    auto delta_usage = new_usage - right_brother.node.usage;
-
-                    // Shift brother to right, so there is space for moving entries from leaf.
-                    shift_to_right(&right_brother.node, 0, delta_usage);
-
-                    auto leaf_iter = leaf->node.usage - 1;
-                    auto new_entry_copied = false;
-                    for (auto i = 0; i < delta_usage; i++) {
-                        // Check if we are copying leaf new entry.
-                        if (leaf_iter + 1 == leaf->index && !new_entry_copied) {
-                            fill_leaf_entry(&right_brother.node, i, key, value);
-                            new_entry_copied = true;
-                        } else {
-                            memcpy(&right_brother.node.node_entries[i], &leaf->node.node_entries[leaf_iter],
-                                   sizeof(NodeEntry));
-                            // Clear
-                            memset(&leaf->node.node_entries[leaf_iter], 0, sizeof(NodeEntry));
-                            leaf_iter--;
-                        }
-                    }
-
-                    if (!new_entry_copied) {
-                        if (leaf->index < RECORDS_IN_NODE - 1) {
-                            // Make space for shift, it is there now for sure
-                            leaf->node.usage--;
-                            shift_to_right(&leaf->node, leaf->index);
-                        }
-                        fill_leaf_entry(&leaf->node, leaf->index, key, value);
-                    }
-
-                    // Set new nodes usage
-                    leaf->node.usage = sum_usage - new_usage;
-                    right_brother.node.usage = new_usage;
+                    compensate(&leaf->node, &right_brother.node, {key, value}, leaf->index, false);
 
                     // Set new parent
                     auto parent = leaf - 1;
@@ -242,42 +185,11 @@ public:
                 // !!! No space in brothers. So let's split!
                 {
                     ExtendedNode<RECORDS_IN_NODE> ext_node{};
-                    auto sum_usage = leaf->node.usage + 1;
-                    auto right_usage = static_cast<uint64_t>(sum_usage / 2);
-                    auto left_usage = sum_usage - right_usage;
+                    uint64_t mid_key = 0;
 
                     // Get and reserve free offset for node.
                     ext_node.offset = storage->get_free_offset(true);
-
-                    // Copy records to new node.
-                    auto leaf_iter = leaf->node.usage - 1;
-                    auto new_entry_copied = false;
-                    for (auto i = 0; i < right_usage; i++) {
-                        // Check if we are copying leaf new entry.
-                        if (leaf_iter + 1 == leaf->index && !new_entry_copied) {
-                            fill_leaf_entry(&ext_node.node, i, key, value);
-                            new_entry_copied = true;
-                        } else {
-                            memcpy(&ext_node.node.node_entries[i], &leaf->node.node_entries[leaf_iter],
-                                   sizeof(NodeEntry));
-                            // Clear
-                            memset(&leaf->node.node_entries[leaf_iter], 0, sizeof(NodeEntry));
-                            leaf_iter--;
-                        }
-                    }
-
-                    if (!new_entry_copied) {
-                        if (leaf->index < RECORDS_IN_NODE - 1) {
-                            // Make space for shift, it is there now for sure
-                            leaf->node.usage--;
-                            shift_to_right(&leaf->node, leaf->index);
-                        }
-                        fill_leaf_entry(&leaf->node, leaf->index, key, value);
-                    }
-
-                    // Set new nodes usage.
-                    leaf->node.usage = left_usage;
-                    ext_node.node.usage = right_usage;
+                    split(&leaf->node, &ext_node.node, {key, value}, leaf->index, mid_key);
 
                     // Persist leafs.
                     storage->write_node(leaf->offset, &leaf->node, true);
@@ -285,14 +197,15 @@ public:
 
                     // Insert new record into parent.
                     auto parent = leaf - 1;
-                    auto parent_new_key = leaf->node.node_entries[left_usage - 1].offset;
+                    auto parent_new_key = mid_key;
                     auto parent_new_offset = ext_node.offset;
                     if (parent->node.usage < RECORDS_IN_NODE) { // Parent has space.
                         if (parent->index != parent->node.usage) {
                             shift_to_right(&parent->node, parent->index, 1, false, true);
                         }
 
-                        fill_node_entry(&parent->node, parent->index, parent_new_key, parent_new_offset);
+                        fill_node_entry(parent->node.node_entries + parent->index, parent_new_key, parent_new_offset);
+                        parent->node.usage++;
                         storage->write_node(parent->offset, &parent->node, true);
 
                         ret = SUCCESS;
@@ -375,11 +288,7 @@ protected:
         for (int64_t i = node->usage - step; i >= start_index; i--) {
             // If copy to last record
             if (inner && i == node->usage - step) {
-                if (i + step + 1 != RECORDS_IN_NODE) {
-                    node->node_entries[i + step + 1].offset = node->node_entries[i + 1].offset;
-                } else {
-                    node->offset = node->node_entries[i + 1].offset;
-                }
+                node->node_entries[i + step + 1].offset = node->node_entries[i + 1].offset;
             }
 
             memcpy(&node->node_entries[i + step], &node->node_entries[i], sizeof(NodeEntry));
@@ -408,25 +317,18 @@ protected:
         return SUCCESS;
     }
 
-    // Fills entry in leaf at specified index and increments usage.
+    // Fills entry in leaf at specified index.
     inline void
-    fill_leaf_entry(Node<RECORDS_IN_NODE> *leaf, uint32_t entry_index, uint64_t key, const char *value) const {
-        leaf->usage++;
-        leaf->node_entries[entry_index].offset = key;
-        strcpy(leaf->node_entries[entry_index].record.value, value);
+    fill_leaf_entry(NodeEntry *entry, uint64_t key, const char *value) const {
+        entry->offset = key;
+        strcpy(entry->record.value, value);
     }
 
-    // Fills key in inner node at specified index and offset at one bigger index and increments usage.
+    // Fills key in inner node at specified index and offset at one bigger index.
     inline void
-    fill_node_entry(Node<RECORDS_IN_NODE> *node, uint32_t entry_index, uint64_t key, uint64_t offset) const {
-        node->usage++;
-        node->node_entries[entry_index].record.key = key;
-        if (entry_index < RECORDS_IN_NODE - 1) {
-            node->node_entries[entry_index + 1].offset = offset;
-        } else {
-            node->offset = offset;
-        }
-
+    fill_node_entry(NodeEntry *entry, uint64_t key, uint64_t offset) const {
+        (entry + 1)->offset = offset;
+        entry->record.key = key;
     }
 
     // Fetches brothers if possible. If not, leave Node param untouched.
@@ -447,14 +349,166 @@ protected:
             right->index = parent->index + 1;
             storage->open_node(parent->node.node_entries[parent->index + 1].offset, &right->node);
         } else if (parent->index == parent->node.usage - 1) {
-            if (parent->index < RECORDS_IN_NODE - 1) {
-                right->offset = parent->node.node_entries[parent->index + 1].offset;
-            } else {
-                right->offset = parent->node.offset;
-            }
+            right->offset = parent->node.node_entries[parent->index + 1].offset;
             right->index = parent->index + 1;
             storage->open_node(right->offset, &right->node);
         }
+    }
+
+    // Merge two nodes and split equally.
+    // 'in_right' flag indicates to witch node new element should be added (left = 0, right = 1).
+    // If mid_key is set it indicates inner node.
+    // NOTE: If it's inner node, then mid_key from parent will be automatically set to proper value.
+    //       If it's leaf, then you have to explicitly set key in parent node.
+    inline void
+    compensate(Node<RECORDS_IN_NODE> *left, Node<RECORDS_IN_NODE> *right, const NodeEntry new_entry, uint32_t index,
+               bool in_right, uint64_t *mid_key = nullptr) const {
+        auto sum_usage = left->usage + right->usage + 1;
+        auto right_new_usage = static_cast<uint64_t>((sum_usage + 1) / 2);
+        auto left_new_usage = sum_usage - right_new_usage;
+
+        // Fill left half, mid and right half of one long node
+        auto node_entries = new NodeEntry[sum_usage + 2 * (mid_key != nullptr)];
+        auto node_iter = 0ULL;
+
+        // Left half
+        if (!in_right) {
+            memcpy(node_entries, left->node_entries, index * sizeof(NodeEntry));
+            node_iter += index;
+
+            // Add new entry
+            auto new_entry_index = node_iter;
+            if (mid_key != nullptr) {
+                node_entries[new_entry_index].offset = left->node_entries[index].offset;
+            } else {
+                fill_leaf_entry(node_entries + new_entry_index, new_entry.offset, new_entry.record.value);
+            }
+            node_iter += 1;
+
+            memcpy(node_entries + node_iter, left->node_entries + index,
+                   (left->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
+            node_iter = left->usage + 1;
+
+            // If it is inner node, now end adding new entry.
+            if (mid_key != nullptr) {
+                fill_node_entry(node_entries + new_entry_index, new_entry.record.key, new_entry.offset);
+            }
+        } else {
+            memcpy(node_entries, left->node_entries, (left->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+            node_iter = left->usage;
+        }
+
+        //Mid
+        if (mid_key != nullptr) {
+            node_entries[node_iter].record.key = *mid_key;
+            node_iter++;
+        }
+
+        // Right half
+        if (in_right) {
+            memcpy(node_entries + node_iter, right->node_entries, index * sizeof(NodeEntry));
+            node_iter += index;
+
+            // Add new entry
+            auto new_entry_index = node_iter;
+            if (mid_key != nullptr) {
+                node_entries[new_entry_index].offset = right->node_entries[index].offset;
+            } else {
+                fill_leaf_entry(node_entries + new_entry_index, new_entry.offset, new_entry.record.value);
+            }
+            node_iter += 1;
+
+            memcpy(node_entries + node_iter, right->node_entries + index,
+                   (right->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
+
+            // If it is inner node, now end adding new entry.
+            if (mid_key != nullptr) {
+                fill_node_entry(node_entries + new_entry_index, new_entry.record.key, new_entry.offset);
+            }
+        } else {
+            memcpy(node_entries + node_iter, right->node_entries,
+                   (right->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+        }
+
+        // Set new mid_key and erase it in note_entries
+        if (mid_key != nullptr) {
+            *mid_key = node_entries[left_new_usage].record.key;
+            node_entries[left_new_usage].record.key = 0;
+        }
+
+        // Clear nodes...
+        memset(left->node_entries, 0, (left->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+        memset(right->node_entries, 0, (right->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+
+        // ...and distribute each new half to proper node.
+        memcpy(left->node_entries, node_entries, (left_new_usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+        memcpy(right->node_entries, node_entries + left_new_usage,
+               (right_new_usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+
+        // Set new usage.
+        left->usage = left_new_usage;
+        right->usage = right_new_usage;
+
+        delete[] node_entries;
+    }
+
+    // Split 'old_node'. Uses 'new_node' to it.
+    // 'is_leaf' indicates what type of node is being split.
+    // 'mid_entry' is new entry pointing at 'new_node', which should be added to parent.
+    inline void
+    split(Node<RECORDS_IN_NODE> *old_node, Node<RECORDS_IN_NODE> *new_node, const NodeEntry new_entry, uint32_t index,
+          uint64_t &mid_key, bool is_leaf = true) const {
+        auto sum_usage = old_node->usage + 1;
+        auto old_new_usage = static_cast<uint64_t>((sum_usage + 1) / 2);
+        auto new_new_usage =
+                sum_usage - old_new_usage - (!is_leaf); // - 1 if we give mid entry away, because we are inner node
+
+        // Fill long node
+        auto node_entries = new NodeEntry[sum_usage + (!is_leaf)];
+        auto node_iter = 0ULL;
+
+        // Copy left half of old (new entry divides)
+        memcpy(node_entries, old_node->node_entries, index * sizeof(NodeEntry));
+        node_iter += index;
+
+        // Add new entry
+        auto new_entry_index = node_iter;
+        if (!is_leaf) {
+            node_entries[new_entry_index].offset = old_node->node_entries[index].offset;
+        } else {
+            fill_leaf_entry(node_entries + new_entry_index, new_entry.offset, new_entry.record.value);
+        }
+        node_iter += 1;
+
+        memcpy(node_entries + node_iter, old_node->node_entries + index,
+               (old_node->usage - index + (!is_leaf)) * sizeof(NodeEntry));
+
+        // If it is inner node, now end adding new entry.
+        if (!is_leaf) {
+            fill_node_entry(node_entries + new_entry_index, new_entry.record.key, new_entry.offset);
+        }
+
+        // Set mid_key and erase it in note_entries if it is inner node
+        if (!is_leaf) {
+            mid_key = node_entries[old_new_usage].record.key;
+            node_entries[old_new_usage].record.key = 0;
+        } else {
+            mid_key = node_entries[old_new_usage - 1].offset;
+        }
+
+        // Clear nodes...
+        memset(old_node->node_entries, 0, (old_node->usage + (!is_leaf)) * sizeof(NodeEntry));
+
+        // ...and distribute each new half to proper node.
+        memcpy(old_node->node_entries, node_entries, (old_new_usage + (!is_leaf)) * sizeof(NodeEntry));
+        memcpy(new_node->node_entries, node_entries + old_new_usage + (!is_leaf),
+               (new_new_usage + (!is_leaf)) * sizeof(NodeEntry));
+
+        // Set new usage.
+        old_node->usage = old_new_usage;
+        new_node->usage = new_new_usage;
+
+        delete[] node_entries;
     }
 
 private:

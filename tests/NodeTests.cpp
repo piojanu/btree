@@ -41,5 +41,7 @@ TEST_F(NodeBasicTest, GIVENemptyNodeWHENcheckValuesTHENproperValues) {
     EXPECT_EQ(0, empty_node.node_entries[1].record.key);
     EXPECT_STREQ("", empty_node.node_entries[1].record.value);
 
-    EXPECT_EQ(0, empty_node.offset);
+    EXPECT_EQ(0, empty_node.node_entries[2].offset);
+    EXPECT_EQ(0, empty_node.node_entries[2].record.key);
+    EXPECT_STREQ("", empty_node.node_entries[2].record.value);
 }

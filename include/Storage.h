@@ -39,11 +39,7 @@ public:
 
             ext_node[i].offset = offset;
             ext_node[i].index = binary_search(key, &ext_node[i].node, i + 1 == height);
-            if (ext_node[i].index < RECORDS_IN_NODE) {
-                offset = ext_node[i].node.node_entries[ext_node[i].index].offset;
-            } else {
-                offset = ext_node[i].node.offset;
-            }
+            offset = ext_node[i].node.node_entries[ext_node[i].index].offset;
         }
 
         return btree::SUCCESS;
