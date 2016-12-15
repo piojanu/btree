@@ -77,7 +77,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey2THENproperlyOpened
     auto ret = storage.find_node(2, node);
     ASSERT_EQ(ret, btree::SUCCESS);
 
-    EXPECT_EQ(0, node[0].ptr);
+    EXPECT_EQ(0, node[0].offset);
     EXPECT_EQ(0, node[0].index);
     EXPECT_EQ(values[0], node[0].node.usage);
     EXPECT_EQ(values[1], node[0].node.node_entries[0].offset);
@@ -88,7 +88,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey2THENproperlyOpened
     EXPECT_EQ(values[6], node[0].node.node_entries[2].record.key);
     EXPECT_EQ(values[7], node[0].node.offset);
 
-    EXPECT_EQ(1, node[1].ptr);
+    EXPECT_EQ(1, node[1].offset);
     EXPECT_EQ(1, node[1].index);
     EXPECT_EQ(values[8], node[1].node.usage);
     EXPECT_EQ(values[8 + 1], node[1].node.node_entries[0].offset);
@@ -105,7 +105,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey5THENproperlyOpened
     auto ret = storage.find_node(5, node);
     ASSERT_EQ(ret, btree::SUCCESS);
 
-    EXPECT_EQ(0, node[0].ptr);
+    EXPECT_EQ(0, node[0].offset);
     EXPECT_EQ(1, node[0].index);
     EXPECT_EQ(values[0], node[0].node.usage);
     EXPECT_EQ(values[1], node[0].node.node_entries[0].offset);
@@ -116,7 +116,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey5THENproperlyOpened
     EXPECT_EQ(values[6], node[0].node.node_entries[2].record.key);
     EXPECT_EQ(values[7], node[0].node.offset);
 
-    EXPECT_EQ(2, node[1].ptr);
+    EXPECT_EQ(2, node[1].offset);
     EXPECT_EQ(2, node[1].index);
     EXPECT_EQ(values[16], node[1].node.usage);
     EXPECT_EQ(values[16 + 1], node[1].node.node_entries[0].offset);
@@ -133,7 +133,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey6THENproperlyOpened
     auto ret = storage.find_node(6, node);
     ASSERT_EQ(ret, btree::SUCCESS);
 
-    EXPECT_EQ(0, node[0].ptr);
+    EXPECT_EQ(0, node[0].offset);
     EXPECT_EQ(1, node[0].index);
     EXPECT_EQ(values[0], node[0].node.usage);
     EXPECT_EQ(values[1], node[0].node.node_entries[0].offset);
@@ -144,7 +144,7 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENfindNodeKey6THENproperlyOpened
     EXPECT_EQ(values[6], node[0].node.node_entries[2].record.key);
     EXPECT_EQ(values[7], node[0].node.offset);
 
-    EXPECT_EQ(2, node[1].ptr);
+    EXPECT_EQ(2, node[1].offset);
     EXPECT_EQ(3, node[1].index);
     EXPECT_EQ(values[16], node[1].node.usage);
     EXPECT_EQ(values[16 + 1], node[1].node.node_entries[0].offset);
@@ -242,12 +242,40 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENgetFreeOffsetTHENreturnsProper
     EXPECT_EQ(ret, nodes_count);
 }
 
+
 TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteExistingOffsetAndGetFreeOffsetTHENreturnsProperFreeOffset) {
     auto ret = storage.delete_node(1);
     ASSERT_EQ(ret, btree::SUCCESS);
 
-    ret = storage.get_free_offset();
-    EXPECT_EQ(ret, 1);
+    auto offset = storage.get_free_offset();
+    EXPECT_EQ(offset, 1);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENreserveIllegalOffsetTHENreturnsErrorCode) {
+    auto ret = storage.reserve_offset(nodes_count - 1);
+    EXPECT_EQ(ret, btree::INVALID_OFFSET);
+
+    ret = storage.reserve_offset(nodes_count + 1);
+    EXPECT_EQ(ret, btree::INVALID_OFFSET);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENreserveLegalOffsetTHENreturnsSuccessAndProperlyReserved) {
+    auto ret = storage.reserve_offset(nodes_count);
+    EXPECT_EQ(ret, btree::SUCCESS);
+    EXPECT_EQ(storage.get_free_offset(), nodes_count + 1);
+
+    ret = storage.delete_node(1);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    ret = storage.reserve_offset(1);
+    EXPECT_EQ(ret, btree::SUCCESS);
+    EXPECT_EQ(storage.get_free_offset(), nodes_count + 1);
+}
+
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENgetFreeOffsetWithReserveParamSetTHENreturnsProperFreeOffsetAndReservesIt) {
+    auto ret = storage.get_free_offset(true);
+    EXPECT_EQ(ret, nodes_count);
+    EXPECT_EQ(storage.get_free_offset(), nodes_count + 1);
 }
 
 TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteThenWriteToFreeOffsetTHENproperWriteAndDeletedOffsetFromFree) {

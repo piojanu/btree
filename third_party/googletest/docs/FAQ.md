@@ -176,7 +176,7 @@ on the WxWidgets site.
 Please contact `googletestframework@googlegroups.com` if you are
 interested in improving the support for MinGW.
 
-## Why does Google Test support EXPECT\_EQ(NULL, ptr) and ASSERT\_EQ(NULL, ptr) but not EXPECT\_NE(NULL, ptr) and ASSERT\_NE(NULL, ptr)? ##
+## Why does Google Test support EXPECT\_EQ(NULL, offset) and ASSERT\_EQ(NULL, offset) but not EXPECT\_NE(NULL, offset) and ASSERT\_NE(NULL, offset)? ##
 
 Due to some peculiarity of C++, it requires some non-trivial template
 meta programming tricks to support using `NULL` as an argument of the
@@ -189,13 +189,13 @@ argument and the _actual_ value as the second. It's reasonable that
 someone wants to write `EXPECT_EQ(NULL, some_expression)`, and this
 indeed was requested several times. Therefore we implemented it.
 
-The need for `EXPECT_NE(NULL, ptr)` isn't nearly as strong. When the
-assertion fails, you already know that `ptr` must be `NULL`, so it
-doesn't add any information to print ptr in this case. That means
-`EXPECT_TRUE(ptr != NULL)` works just as well.
+The need for `EXPECT_NE(NULL, offset)` isn't nearly as strong. When the
+assertion fails, you already know that `offset` must be `NULL`, so it
+doesn't add any information to print offset in this case. That means
+`EXPECT_TRUE(offset != NULL)` works just as well.
 
-If we were to support `EXPECT_NE(NULL, ptr)`, for consistency we'll
-have to support `EXPECT_NE(ptr, NULL)` as well, as unlike `EXPECT_EQ`,
+If we were to support `EXPECT_NE(NULL, offset)`, for consistency we'll
+have to support `EXPECT_NE(offset, NULL)` as well, as unlike `EXPECT_EQ`,
 we don't have a convention on the order of the two arguments for
 `EXPECT_NE`. This means using the template meta programming tricks
 twice in the implementation, making it even harder to understand and

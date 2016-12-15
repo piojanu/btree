@@ -608,7 +608,7 @@ TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertLowerMidV
 
     // Prepare case begin state
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
-    write_page(begin_state, 2, 2, "AA11111", 3, "BB33333");
+    write_page(begin_state, 2, 1, "AA11111", 3, "BB33333");
     write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
     createContainer(2);
 
@@ -641,6 +641,42 @@ TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertHigherVal
     write_page(end_state, 1, 1, 4, 2, 0, 0);
     write_page(end_state, 2, 3, "AA33333", 4, "AA44444");
     write_page(end_state, 2, 6, "BB66666", key, value);
+
+
+    // Do operation
+    auto ret = container->insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENleafsFullAndBrotherOfParentWithSpaceAndTreeHighThreeWHENinsertValueTHENproperSplitAndCompensation) {
+    // Prepare case record
+    const uint64_t key = 2;
+    const char value[8] = "XX22222";
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 7, 2, 0, 0); // Root
+    write_page(begin_state, 2, 3, 3, 4, 5, 5); // Node 1
+    write_page(begin_state, 1, 6, 8, 7, 0, 0); // Node 2
+    write_page(begin_state, 2, 1, "AA11111", 3, "BB33333"); // Node 3
+    write_page(begin_state, 2, 4, "AA44444", 5, "BB55555"); // Node 4
+    write_page(begin_state, 2, 6, "AA66666", 7, "BB77777"); // Node 5
+    write_page(begin_state, 1, 8, "AA88888", 0, ZERO_STR);  // Node 6
+    write_page(begin_state, 1, 9, "AA99999", 0, ZERO_STR);  // Node 7
+    createContainer(3);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 5, 2, 0, 0); // Root
+    write_page(end_state, 2, 3, 2, 8, 3, 4); // Node 1
+    write_page(end_state, 2, 5, 7, 6, 8, 7); // Node 2
+    write_page(end_state, 2, 1, "AA11111", key, value);   // Node 3
+    write_page(end_state, 2, 4, "AA44444", 5, "BB55555"); // Node 4
+    write_page(end_state, 2, 6, "AA66666", 7, "BB77777"); // Node 5
+    write_page(end_state, 1, 8, "AA88888", 0, ZERO_STR);  // Node 6
+    write_page(end_state, 1, 9, "AA99999", 0, ZERO_STR);  // Node 7
+    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR);  // Node 8
 
 
     // Do operation
