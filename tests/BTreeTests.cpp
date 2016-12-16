@@ -29,12 +29,12 @@ struct BTreePrintTest : public ::testing::Test {
 
     void SetUp() override {
         uint64_t key = records.size();
-        for (auto record : records) {
-            record.first = key;
-            std::strcpy(record.second, value);
+        for (auto i = 0; i < static_cast<int64_t >(records.size()); i++) {
+            records[i].first = key;
+            std::strcpy(records[i].second, value);
 
-            auto ret = container.insert(record.first, record.second);
-            ASSERT_TRUE(ret == btree::SUCCESS);
+            auto ret = container.insert(records[i].first, records[i].second);
+            ASSERT_EQ(ret, btree::SUCCESS) << "Key: " << key;
 
             key -= 1;
         }
@@ -62,6 +62,7 @@ struct BTreeAdvancedTest : public ::testing::Test {
         stream.write(reinterpret_cast<const char *>(&two), sizeof(two));
         stream.write(reinterpret_cast<const char *>(&p3), sizeof(p3));
         stream.write(reinterpret_cast<const char *>(&zero), sizeof(zero));
+        stream.write(reinterpret_cast<const char *>(&zero), sizeof(zero));
 
         if (&stream == &begin_state) {
             count_begin_pages++;
@@ -72,7 +73,7 @@ struct BTreeAdvancedTest : public ::testing::Test {
 
     void write_page(std::iostream &stream, const uint64_t &usage, const uint64_t &one,
                                            const char v1[8],      const uint64_t &two,
-                                           const char v2[8]) {
+                                           const char v2[8],      const uint64_t &next) {
         uint64_t zero = 0;
 
         stream.write(reinterpret_cast<const char *>(&usage), sizeof(usage));
@@ -82,6 +83,7 @@ struct BTreeAdvancedTest : public ::testing::Test {
         stream.write(v2, sizeof(uint64_t));
         stream.write(reinterpret_cast<const char *>(&zero), sizeof(zero));
         stream.write(reinterpret_cast<const char *>(&zero), sizeof(zero));
+        stream.write(reinterpret_cast<const char *>(&next), sizeof(next));
 
         if (&stream == &begin_state) {
             count_begin_pages++;
@@ -102,7 +104,7 @@ struct BTreeAdvancedTest : public ::testing::Test {
             uint64_t value = 0;
             uint64_t expected = 0;
 
-            for (int j = 0; j < 7; j++) {
+            for (int j = 0; j < 8; j++) {
                 begin_state.read(reinterpret_cast<char *>(&value), sizeof(value));
                 end_state.read(reinterpret_cast<char *>(&expected), sizeof(expected));
 
@@ -285,8 +287,8 @@ TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintDataOrderedTHENproperP
         std::string value;
 
         stream >> key >> value;
-        EXPECT_EQ(records[i].first, key);
-        EXPECT_STREQ(records[i].second, value.c_str());
+        EXPECT_EQ(records[i].first, key) << "Iter: " << i;
+        EXPECT_STREQ(records[i].second, value.c_str()) << "Iter: " << i;
     }
 }
 
@@ -300,29 +302,33 @@ TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBinar
     uint64_t *data = reinterpret_cast<uint64_t *>(std::malloc(sizeof(uint64_t)));
     char data_ch[8];
 
-    // First node [1 1 2 2 0 0 0 0]
+    // First node [1 1 3 2 0 0 0 0 0 0]
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
     EXPECT_EQ(1, *data);
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
     EXPECT_EQ(1, *data);
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
-    EXPECT_EQ(2, *data);
+    EXPECT_EQ(3, *data);
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
     EXPECT_EQ(2, *data);
-    for (auto i = 0; i < 4; i++) {
+    for (auto i = 0; i < 6; i++) {
         stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
         EXPECT_EQ(0, *data);
     }
 
-    // Second node [2 1 "CB12345" 2 "CB12345" 0 0 0]
+    // Second node [3 1 "CB12345" 2 "CB12345" 3 "CB12345" 0 0 0]
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
-    EXPECT_EQ(2, *data);
+    EXPECT_EQ(3, *data);
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
     EXPECT_EQ(1, *data);
     stream.read(data_ch, sizeof(data_ch));
     EXPECT_STREQ(value, data_ch);
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
     EXPECT_EQ(2, *data);
+    stream.read(data_ch, sizeof(data_ch));
+    EXPECT_STREQ(value, data_ch);
+    stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
+    EXPECT_EQ(3, *data);
     stream.read(data_ch, sizeof(data_ch));
     EXPECT_STREQ(value, data_ch);
     for (auto i = 0; i < 3; i++) {
@@ -330,13 +336,9 @@ TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBinar
         EXPECT_EQ(0, *data);
     }
 
-    // Third node [3 3 "CB12345" 4 "CB12345" 5 "CB12345" 0]
+    // Third node [2 4 "CB12345" 5 "CB12345" 0 0 0 0 0]
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
     EXPECT_EQ(3, *data);
-    stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
-    EXPECT_EQ(3, *data);
-    stream.read(data_ch, sizeof(data_ch));
-    EXPECT_STREQ(value, data_ch);
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
     EXPECT_EQ(4, *data);
     stream.read(data_ch, sizeof(data_ch));
@@ -347,6 +349,10 @@ TEST_F(BTreePrintTest, GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBinar
     EXPECT_STREQ(value, data_ch);
     stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
     EXPECT_EQ(0, *data);
+    for (auto i = 0; i < 5; i++) {
+        stream.read(reinterpret_cast<char *>(data), sizeof(uint64_t));
+        EXPECT_EQ(0, *data);
+    }
 
     std::free(data);
 }
@@ -359,11 +365,11 @@ TEST_F(BTreeAdvancedTest, GIVENrootNodeWithSpaceWHENinsertValueTHENproperInserti
     const char value[8] = "XX11111";
 
     // Prepare case begin state
-    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 0);
     createContainer(1);
 
     // Prepare expected end state
-    write_page(end_state, 2, key, value, 3, "AA33333"); // Root
+    write_page(end_state, 2, key, value, 3, "AA33333", 0); // Root
 
     // Do operation
     auto ret = container->insert(key, value);
@@ -380,14 +386,14 @@ TEST_F(BTreeAdvancedTest, GIVENleafsWithSpaceWHENinsertLowerValueTHENproperInser
 
     // Prepare case begin state
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
-    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
-    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 2);
+    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR, 0);
     createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 3, 2, 0, 0); // Root
-    write_page(end_state, 2, key, value, 3, "AA33333"); // Node 1
-    write_page(end_state, 1, 4, "AA44444", 0, ZERO_STR); // Node 2
+    write_page(end_state, 2, key, value, 3, "AA33333", 2); // Node 1
+    write_page(end_state, 1, 4, "AA44444", 0, ZERO_STR, 0); // Node 2
 
 
     // Do operation
@@ -405,14 +411,14 @@ TEST_F(BTreeAdvancedTest, GIVENleafsWithSpaceWHENinsertHigherValueTHENproperInse
 
     // Prepare case begin state
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
-    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
-    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 2);
+    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR, 0);
     createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 3, 2, 0, 0); // Root
-    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR); // Node 1
-    write_page(end_state, 2, 4, "AA44444", key, value); // Node 2
+    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 2); // Node 1
+    write_page(end_state, 2, 4, "AA44444", key, value, 0); // Node 2
 
 
     // Do operation
@@ -429,13 +435,13 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertLowerValueTHENproperSplit) 
     const char value[8] = "XX11111";
 
     // Prepare case begin state
-    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777");
+    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777", 0);
     createContainer(1);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 3, 2, 0, 0); // Root
-    write_page(end_state, 2, key, value, 3, "AA33333"); // Node 1
-    write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR); // Node 2
+    write_page(end_state, 2, key, value, 3, "AA33333", 2); // Node 1
+    write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR, 0); // Node 2
 
     // Do operation
     auto ret = container->insert(key, value);
@@ -451,13 +457,13 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertMidValueTHENproperSplit) {
     const char value[8] = "XX44444";
 
     // Prepare case begin state
-    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777");
+    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777", 0);
     createContainer(1);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, key, 2, 0, 0); // Root
-    write_page(end_state, 2, 3, "AA33333", key, value); // Node 1
-    write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR); // Node 2
+    write_page(end_state, 2, 3, "AA33333", key, value, 2); // Node 1
+    write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR, 0); // Node 2
 
     // Do operation
     auto ret = container->insert(key, value);
@@ -473,13 +479,13 @@ TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENinsertHigherValueTHENproperSplit)
     const char value[8] = "XX99999";
 
     // Prepare case begin state
-    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777");
+    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777", 0);
     createContainer(1);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 7, 2, 0, 0); // Root
-    write_page(end_state, 2, 3, "AA33333", 7, "BB77777"); // Node 1
-    write_page(end_state, 1, key, value, 0, ZERO_STR); // Node 2
+    write_page(end_state, 2, 3, "AA33333", 7, "BB77777", 2); // Node 1
+    write_page(end_state, 1, key, value, 0, ZERO_STR, 0); // Node 2
 
     // Do operation
     auto ret = container->insert(key, value);
@@ -496,15 +502,15 @@ TEST_F(BTreeAdvancedTest, GIVENfullLeafNodesWHENinsertLowerValueTHENproperSplit)
 
     // Prepare case begin state
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
-    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
-    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333", 2);
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666", 0);
     createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 2, 1, 2, 3, 3, 2);
-    write_page(end_state, 2, key, value, 2, "AA22222");
-    write_page(end_state, 2, 4, "AA44444", 6, "BB66666");
-    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR);
+    write_page(end_state, 2, key, value, 2, "AA22222", 3);
+    write_page(end_state, 2, 4, "AA44444", 6, "BB66666", 0);
+    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR, 2);
 
 
     // Do operation
@@ -522,15 +528,15 @@ TEST_F(BTreeAdvancedTest, GIVENfullLeafNodesWHENinsertHigherValueTHENproperSplit
 
     // Prepare case begin state
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
-    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
-    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333", 2);
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666", 0);
     createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 2, 1, 3, 2, 6, 3);
-    write_page(end_state, 2, 2, "AA22222", 3, "BB33333");
-    write_page(end_state, 2, 4, "AA44444", 6, "BB66666");
-    write_page(end_state, 1, key, value, 0, ZERO_STR);
+    write_page(end_state, 2, 2, "AA22222", 3, "BB33333", 2);
+    write_page(end_state, 2, 4, "AA44444", 6, "BB66666", 3);
+    write_page(end_state, 1, key, value, 0, ZERO_STR, 0);
 
 
     // Do operation
@@ -548,17 +554,17 @@ TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertLowerValueTHENproperSpli
 
     // Prepare case begin state
     write_page(begin_state, 2, 1, 3, 2, 6, 3);
-    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
-    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
-    write_page(begin_state, 2, 7, "AA77777", 8, "BB88888");
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333", 2);
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666", 3);
+    write_page(begin_state, 2, 7, "AA77777", 8, "BB88888", 0);
     createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 5, 3, 6, 0, 0);
-    write_page(end_state, 2, key, value, 2, "AA22222");
-    write_page(end_state, 2, 4, "AA44444", 6, "BB66666");
-    write_page(end_state, 2, 7, "AA77777", 8, "BB88888");
-    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR);
+    write_page(end_state, 2, key, value, 2, "AA22222", 4);
+    write_page(end_state, 2, 4, "AA44444", 6, "BB66666", 3);
+    write_page(end_state, 2, 7, "AA77777", 8, "BB88888", 0);
+    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR, 2);
     write_page(end_state, 1, 1, 2, 4, 0, 0);
     write_page(end_state, 1, 2, 6, 3, 0, 0);
 
@@ -578,17 +584,17 @@ TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertMidValueTHENproperSplit)
 
     // Prepare case begin state
     write_page(begin_state, 2, 1, 3, 2, 6, 3);
-    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
-    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
-    write_page(begin_state, 2, 7, "AA77777", 8, "BB88888");
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333", 2);
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666", 3);
+    write_page(begin_state, 2, 7, "AA77777", 8, "BB88888", 0);
     createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 5, 5, 6, 0, 0);
-    write_page(end_state, 2, 2, "AA22222", 3, "BB33333");
-    write_page(end_state, 2, 4, "AA44444", key, value);
-    write_page(end_state, 2, 7, "AA77777", 8, "BB88888");
-    write_page(end_state, 1, 6, "BB66666", 0, ZERO_STR);
+    write_page(end_state, 2, 2, "AA22222", 3, "BB33333", 2);
+    write_page(end_state, 2, 4, "AA44444", key, value, 4);
+    write_page(end_state, 2, 7, "AA77777", 8, "BB88888", 0);
+    write_page(end_state, 1, 6, "BB66666", 0, ZERO_STR, 3);
     write_page(end_state, 1, 1, 3, 2, 0, 0);
     write_page(end_state, 1, 4, 6, 3, 0, 0);
 
@@ -608,17 +614,17 @@ TEST_F(BTreeAdvancedTest, GIVENfullTreeHighTwoWHENinsertHigherValueTHENproperSpl
 
     // Prepare case begin state
     write_page(begin_state, 2, 1, 3, 2, 6, 3);
-    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333");
-    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
-    write_page(begin_state, 2, 7, "AA77777", 8, "BB88888");
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333", 2);
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666", 3);
+    write_page(begin_state, 2, 7, "AA77777", 8, "BB88888", 0);
     createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 5, 6, 6, 0, 0);
-    write_page(end_state, 2, 2, "AA22222", 3, "BB33333");
-    write_page(end_state, 2, 4, "AA44444", 6, "BB66666");
-    write_page(end_state, 2, 7, "AA77777", 8, "BB88888");
-    write_page(end_state, 1, key, value, 0, ZERO_STR);
+    write_page(end_state, 2, 2, "AA22222", 3, "BB33333", 2);
+    write_page(end_state, 2, 4, "AA44444", 6, "BB66666", 3);
+    write_page(end_state, 2, 7, "AA77777", 8, "BB88888", 4);
+    write_page(end_state, 1, key, value, 0, ZERO_STR, 0);
     write_page(end_state, 1, 1, 3, 2, 0, 0);
     write_page(end_state, 1, 3, 8, 4, 0, 0);
 
@@ -638,14 +644,14 @@ TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertLowerMidV
 
     // Prepare case begin state
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
-    write_page(begin_state, 2, 1, "AA11111", 3, "BB33333");
-    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR);
+    write_page(begin_state, 2, 1, "AA11111", 3, "BB33333", 2);
+    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR, 0);
     createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 2, 2, 0, 0);
-    write_page(end_state, 2, 1, "AA11111", key, value);
-    write_page(end_state, 2, 3, "BB33333", 4, "AA44444");
+    write_page(end_state, 2, 1, "AA11111", key, value, 2);
+    write_page(end_state, 2, 3, "BB33333", 4, "AA44444", 0);
 
 
     // Do operation
@@ -663,14 +669,14 @@ TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertHigherVal
 
     // Prepare case begin state
     write_page(begin_state, 1, 1, 3, 2, 0, 0);
-    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR);
-    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666");
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 2);
+    write_page(begin_state, 2, 4, "AA44444", 6, "BB66666", 0);
     createContainer(2);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 4, 2, 0, 0);
-    write_page(end_state, 2, 3, "AA33333", 4, "AA44444");
-    write_page(end_state, 2, 6, "BB66666", key, value);
+    write_page(end_state, 2, 3, "AA33333", 4, "AA44444", 2);
+    write_page(end_state, 2, 6, "BB66666", key, value, 0);
 
 
     // Do operation
@@ -690,23 +696,23 @@ TEST_F(BTreeAdvancedTest, GIVENleafsFullAndBrotherOfParentWithSpaceAndTreeHighTh
     write_page(begin_state, 1, 1, 7, 2, 0, 0); // Root
     write_page(begin_state, 2, 3, 3, 4, 5, 5); // Node 1
     write_page(begin_state, 1, 6, 8, 7, 0, 0); // Node 2
-    write_page(begin_state, 2, 1, "AA11111", 3, "BB33333"); // Node 3
-    write_page(begin_state, 2, 4, "AA44444", 5, "BB55555"); // Node 4
-    write_page(begin_state, 2, 6, "AA66666", 7, "BB77777"); // Node 5
-    write_page(begin_state, 1, 8, "AA88888", 0, ZERO_STR);  // Node 6
-    write_page(begin_state, 1, 9, "AA99999", 0, ZERO_STR);  // Node 7
+    write_page(begin_state, 2, 1, "AA11111", 3, "BB33333", 4); // Node 3
+    write_page(begin_state, 2, 4, "AA44444", 5, "BB55555", 5); // Node 4
+    write_page(begin_state, 2, 6, "AA66666", 7, "BB77777", 6); // Node 5
+    write_page(begin_state, 1, 8, "AA88888", 0, ZERO_STR, 7);  // Node 6
+    write_page(begin_state, 1, 9, "AA99999", 0, ZERO_STR, 0);  // Node 7
     createContainer(3);
 
     // Prepare expected end state
     write_page(end_state, 1, 1, 5, 2, 0, 0); // Root
     write_page(end_state, 2, 3, 2, 8, 3, 4); // Node 1
     write_page(end_state, 2, 5, 7, 6, 8, 7); // Node 2
-    write_page(end_state, 2, 1, "AA11111", key, value);   // Node 3
-    write_page(end_state, 2, 4, "AA44444", 5, "BB55555"); // Node 4
-    write_page(end_state, 2, 6, "AA66666", 7, "BB77777"); // Node 5
-    write_page(end_state, 1, 8, "AA88888", 0, ZERO_STR);  // Node 6
-    write_page(end_state, 1, 9, "AA99999", 0, ZERO_STR);  // Node 7
-    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR);  // Node 8
+    write_page(end_state, 2, 1, "AA11111", key, value, 8);   // Node 3
+    write_page(end_state, 2, 4, "AA44444", 5, "BB55555", 5); // Node 4
+    write_page(end_state, 2, 6, "AA66666", 7, "BB77777", 6); // Node 5
+    write_page(end_state, 1, 8, "AA88888", 0, ZERO_STR, 7);  // Node 6
+    write_page(end_state, 1, 9, "AA99999", 0, ZERO_STR, 0);  // Node 7
+    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR, 4);  // Node 8
 
 
     // Do operation

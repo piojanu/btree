@@ -67,17 +67,17 @@ public:
 
             auto ret = storage->find_node(key, node_path);
             if (ret != SUCCESS) {
-                goto RETURN;
+                goto ERROR_HANDLER;
             }
 
             if (leaf->node.node_entries[leaf->index].offset == key) {
                 ret = RECORD_EXISTS;
-                goto RETURN;
+                goto ERROR_HANDLER;
             }
 
             ret = insert_entry(leaf, {key, value}, height);
 
-RETURN:
+ERROR_HANDLER:
             delete[] node_path;
             return ret;
         }
@@ -94,19 +94,18 @@ RETURN:
 
         auto ret = storage->find_node(key, node_path);
         if (ret != SUCCESS) {
-            goto RETURN;
+            goto ERROR_HANDLER;
         }
 
         if (leaf->node.node_entries[leaf->index].offset == key) {
             strcpy(leaf->node.node_entries[leaf->index].record.value, value);
             ret = storage->write_node(leaf->offset, &leaf->node, true);
-            goto RETURN;
         } else {
             ret = RECORD_NOT_FOUND;
-            goto RETURN;
+            goto ERROR_HANDLER;
         }
 
-RETURN:
+ERROR_HANDLER:
         return ret;
     }
 
@@ -149,7 +148,30 @@ ERROR_HANDLER:
 
     // Print all data in order.
     int print_data_ordered(std::ostream &out) {
-        return NOT_IMPLEMENTED;
+        auto ext_node = new ExtendedNode<RECORDS_IN_NODE>[height];
+        auto leaf = ext_node + height - 1;
+
+        auto ret = storage->find_node(1, ext_node);
+        if (ret != SUCCESS) {
+            goto ERROR_HANDLER;
+        }
+
+        auto next_node = &leaf->node;
+        do {
+            for( auto i = 0ULL; i < next_node->usage; i++ ) {
+                out << next_node->node_entries[i].offset << " " << std::string(next_node->node_entries[i].record.value) << " ";
+            }
+
+            if( next_node->next_offset != 0 ) {
+                storage->open_node(next_node->next_offset, next_node);
+            } else {
+                break;
+            }
+        } while (true);
+
+ERROR_HANDLER:
+        delete[] ext_node;
+        return ret;
     }
 
     // Print raw index file.
@@ -387,7 +409,7 @@ protected:
     // Inserts entry into specified index.
     // Take care about all all splits and compensations.
     int insert_entry(ExtendedNode<RECORDS_IN_NODE> *node, const NodeEntry new_entry, uint64_t level,
-                     bool is_leaf = true) const {
+                     bool is_leaf = true) {
         auto ret = 0;
 
         if (node->node.usage < RECORDS_IN_NODE) { // Node has space for new record.
@@ -420,6 +442,10 @@ protected:
 
                 // Split
                 split(&ext_node[0].node, &ext_node[1].node, new_entry, node->index, mid_key, is_leaf);
+                if (is_leaf) {
+                    ext_node[1].node.next_offset = ext_node[0].node.next_offset;
+                    ext_node[0].node.next_offset = ext_node[1].offset;
+                }
 
                 // Create new root
                 memset(&node->node, 0, sizeof(Node<RECORDS_IN_NODE>));
@@ -432,6 +458,9 @@ protected:
                 storage->write_node(node->offset, &node->node, true);
                 storage->write_node(ext_node[0].offset, &ext_node[0].node, true);
                 storage->write_node(ext_node[1].offset, &ext_node[1].node, true);
+
+                // Increment height
+                height++;
 
                 ret = SUCCESS;
                 goto RETURN;
@@ -496,6 +525,10 @@ protected:
             // Get and reserve free offset for node.
             ext_node.offset = storage->get_free_offset(true);
             split(&node->node, &ext_node.node, new_entry, node->index, mid_key, is_leaf);
+            if (is_leaf) {
+                ext_node.node.next_offset = node->node.next_offset;
+                node->node.next_offset = ext_node.offset;
+            }
 
             // Persist leafs.
             storage->write_node(node->offset, &node->node, true);

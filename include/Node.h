@@ -29,6 +29,8 @@ struct Node {
     uint64_t usage;
     // Outer right entry is just an offset in inner node or nothing in leaf
     NodeEntry node_entries[RECORDS_IN_NODE + 1];
+    // Leaf nodes creates one-way list, from lower to higher
+    uint64_t next_offset;
 };
 
 }
