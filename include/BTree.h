@@ -89,9 +89,25 @@ RETURN:
             return INVALID_KEY;
         }
 
+        auto node_path = new ExtendedNode<RECORDS_IN_NODE>[height];
+        auto leaf = node_path + height - 1;
 
+        auto ret = storage->find_node(key, node_path);
+        if (ret != SUCCESS) {
+            goto RETURN;
+        }
 
-        return NOT_IMPLEMENTED;
+        if (leaf->node.node_entries[leaf->index].offset == key) {
+            strcpy(leaf->node.node_entries[leaf->index].record.value, value);
+            ret = storage->write_node(leaf->offset, &leaf->node, true);
+            goto RETURN;
+        } else {
+            ret = RECORD_NOT_FOUND;
+            goto RETURN;
+        }
+
+RETURN:
+        return ret;
     }
 
     // Remove record from container.

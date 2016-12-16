@@ -181,8 +181,16 @@ TEST_F(BTreeBasicTest, GIVENemptyContainerWHENupdateKeyZeroTHENreturnErrorCode) 
     EXPECT_EQ(ret, btree::INVALID_KEY);
 }
 
-TEST_F(BTreeBasicTest, GIVENemptyContainerWHENupdateTHENreturnRecordNotFound) {
+TEST_F(BTreeBasicTest, GIVENemptyContainerWHENupdateTHENreturnEmptyStorage) {
     auto ret = container.update(key, value_updated);
+    EXPECT_EQ(ret, btree::EMPTY_STORAGE);
+}
+
+TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENupdateNotExistingRecordTHENreturnRecordNotFound) {
+    auto ret = container.insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    ret = container.update(key + 1, value_updated);
     EXPECT_EQ(ret, btree::RECORD_NOT_FOUND);
 }
 
