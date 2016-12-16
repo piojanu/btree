@@ -102,7 +102,7 @@ struct BTreeAdvancedTest : public ::testing::Test {
             uint64_t value = 0;
             uint64_t expected = 0;
 
-            for (int j = 0; j < 6; j++) {
+            for (int j = 0; j < 7; j++) {
                 begin_state.read(reinterpret_cast<char *>(&value), sizeof(value));
                 end_state.read(reinterpret_cast<char *>(&expected), sizeof(expected));
 
@@ -176,6 +176,11 @@ TEST_F(BTreeBasicTest, GIVENcontainerWithItemWHENinsertExistingItemTHENreturnErr
     EXPECT_EQ(ret, btree::RECORD_EXISTS);
 }
 
+TEST_F(BTreeBasicTest, GIVENemptyContainerWHENupdateKeyZeroTHENreturnErrorCode) {
+    auto ret = container.update(0, value);
+    EXPECT_EQ(ret, btree::INVALID_KEY);
+}
+
 TEST_F(BTreeBasicTest, GIVENemptyContainerWHENupdateTHENreturnRecordNotFound) {
     auto ret = container.update(key, value_updated);
     EXPECT_EQ(ret, btree::RECORD_NOT_FOUND);
@@ -189,6 +194,11 @@ TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENupdateRecordTHENreturnSuccess
     EXPECT_EQ(ret, btree::SUCCESS);
 }
 
+TEST_F(BTreeBasicTest, GIVENemptyContainerWHENremoveKeyZeroTHENreturnErrorCode) {
+    auto ret = container.remove(0);
+    EXPECT_EQ(ret, btree::INVALID_KEY);
+}
+
 TEST_F(BTreeBasicTest, GIVENemptyContainerWHENremoveTHENreturnRecordNotFound) {
     auto ret = container.remove(key);
     EXPECT_EQ(ret, btree::RECORD_NOT_FOUND);
@@ -200,6 +210,11 @@ TEST_F(BTreeBasicTest, GIVENcontainerWithRecordWHENremoveRecordTHENreturnSuccess
 
     ret = container.remove(key);
     EXPECT_EQ(ret, btree::SUCCESS);
+}
+
+TEST_F(BTreeBasicTest, GIVENemptyContainerWHENgetValueOfKeyZeroTHENreturnErrorCode) {
+    auto ret = container.get_value(0, value);
+    EXPECT_EQ(ret, btree::INVALID_KEY);
 }
 
 TEST_F(BTreeBasicTest, GIVENemptyContainerWHENgetValueTHENreturnEmptyStorage) {
