@@ -695,8 +695,7 @@ TEST_F(BTreeAdvancedTest, GIVENoneLeafFullAndBrotherWithSpaceWHENinsertHigherVal
     validate();
 }
 
-TEST_F(BTreeAdvancedTest,
-       GIVENleafsFullAndBrotherOfParentWithSpaceAndTreeHighThreeWHENinsertValueTHENproperSplitAndCompensation) {
+TEST_F(BTreeAdvancedTest, GIVENleafsFullAndBrotherOfParentWithSpaceAndTreeHighThreeWHENinsertValueTHENproperSplitAndCompensation) {
     // Prepare case record
     const uint64_t key = 2;
     const char value[8] = "XX22222";
@@ -726,6 +725,384 @@ TEST_F(BTreeAdvancedTest,
 
     // Do operation
     auto ret = container->insert(key, value);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+// ### ADVANCED REMOVAL TESTS ### //
+
+TEST_F(BTreeAdvancedTest, GIVENoneRecordInRootNodeWHENremoveLastRecordTHENproperRemove) {
+    // Prepare case record
+    const uint64_t key = 3;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 0);
+    createContainer(1);
+
+    // Prepare expected end state
+    write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENremoveLeftMostRecordTHENproperRemove) {
+    // Prepare case record
+    const uint64_t key = 3;
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777", 0);
+    createContainer(1);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR, 0);
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullRootNodeWHENremoveRightMostRecordTHENproperRemove) {
+    // Prepare case record
+    const uint64_t key = 7;
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 3, "AA33333", 7, "BB77777", 0);
+    createContainer(1);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 0);
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENfullLeafsAndminimalParentsAndTreeHighThreeWHENremoveRrecordOfRootKeyTHENproperChangeOfRootKey) {
+    // Prepare case record
+    const uint64_t key = 5;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 5, 2, 0, 0); // Root
+    write_page(begin_state, 1, 3, 2, 4, 0, 0); // Node 1
+    write_page(begin_state, 1, 5, 7, 6, 0, 0); // Node 2
+    write_page(begin_state, 2, 1, "AA11111", 2, "BB22222", 4); // Node 3
+    write_page(begin_state, 2, 4, "AA44444", 5, "BB55555", 5); // Node 4
+    write_page(begin_state, 2, 6, "AA66666", 7, "BB77777", 6); // Node 5
+    write_page(begin_state, 2, 8, "AA88888", 9, "BB99999", 0); // Node 6
+    createContainer(3);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 4, 2, 0, 0); // Root
+    write_page(end_state, 1, 3, 2, 4, 0, 0); // Node 1
+    write_page(end_state, 1, 5, 7, 6, 0, 0); // Node 2
+    write_page(end_state, 2, 1, "AA11111", 2, "BB22222", 4); // Node 3
+    write_page(end_state, 1, 4, "AA44444", 0, ZERO_STR, 5);  // Node 4
+    write_page(end_state, 2, 6, "AA66666", 7, "BB77777", 6); // Node 5
+    write_page(end_state, 2, 8, "AA88888", 9, "BB99999", 0); // Node 6
+
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENminimalLeafsWHENremoveLastRecordFromLeftTHENproperRemoveAndSquash) {
+    // Prepare case record
+    const uint64_t key = 3;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 2);
+    write_page(begin_state, 1, 7, "AA77777", 0, ZERO_STR, 0);
+    createContainer(2);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 7, "AA77777", 0, ZERO_STR, 0);
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENminimalLeafsWHENremoveLastRecordFromRightTHENproperRemoveAndSquash) {
+    // Prepare case record
+    const uint64_t key = 7;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 2);
+    write_page(begin_state, 1, 7, "AA77777", 0, ZERO_STR, 0);
+    createContainer(2);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 0);
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENminimalLeafsWHENremoveLastRecordFromLeftMostTHENproperRemoveAndSquash) {
+    // Prepare case record
+    const uint64_t key = 3;
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 1, 3, 2, 7, 3);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 2);
+    write_page(begin_state, 1, 7, "AA77777", 0, ZERO_STR, 3);
+    write_page(begin_state, 1, 9, "AA99999", 0, ZERO_STR, 0);
+    createContainer(2);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 7, 3, 0 ,0); // Root
+    write_page(end_state, 1, 7, "AA77777", 0, ZERO_STR, 3); // Node 1
+    write_page(end_state, 1, 9, "AA99999", 0, ZERO_STR, 0); // Node 3
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENminimalLeafsWHENremoveLastRecordFromMidTHENproperRemoveAndSquash) {
+    // Prepare case record
+    const uint64_t key = 7;
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 1, 3, 2, 7, 3);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 2);
+    write_page(begin_state, 1, 7, "AA77777", 0, ZERO_STR, 3);
+    write_page(begin_state, 1, 9, "AA99999", 0, ZERO_STR, 0);
+    createContainer(2);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 7, 3, 0 ,0); // Root
+    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 3); // Node 1
+    write_page(end_state, 1, 9, "AA99999", 0, ZERO_STR, 0); // Node 3
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENminimalLeafsWHENremoveLastRecordFromRightMostTHENproperRemoveAndSquash) {
+    // Prepare case record
+    const uint64_t key = 9;
+
+    // Prepare case begin state
+    write_page(begin_state, 2, 1, 3, 2, 7, 3);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 2);
+    write_page(begin_state, 1, 7, "AA77777", 0, ZERO_STR, 3);
+    write_page(begin_state, 1, 9, "AA99999", 0, ZERO_STR, 0);
+    createContainer(2);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 3, 2, 0 ,0); // Root
+    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 2); // Node 1
+    write_page(end_state, 1, 7, "AA77777", 0, ZERO_STR, 0); // Node 2
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENminimalLeafsAndParentsAndTreeHighThreeWHENremoveRrecordLeftParentRightChildTHENproperSquashes) {
+    // Prepare case record
+    const uint64_t key = 4;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 4, 2, 0, 0); // Root
+    write_page(begin_state, 1, 3, 3, 4, 0, 0); // Node 1
+    write_page(begin_state, 1, 5, 5, 6, 0, 0); // Node 2
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 4); // Node 3
+    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR, 5); // Node 4
+    write_page(begin_state, 1, 5, "AA55555", 0, ZERO_STR, 6); // Node 5
+    write_page(begin_state, 1, 6, "AA66666", 0, ZERO_STR, 0); // Node 6
+    createContainer(3);
+
+    // Prepare expected end state
+    write_page(end_state, 2, 3, 3, 5, 5, 6); // Root
+    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 5); // Node 3
+    write_page(end_state, 1, 5, "AA55555", 0, ZERO_STR, 6); // Node 5
+    write_page(end_state, 1, 6, "AA66666", 0, ZERO_STR, 0); // Node 6
+
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENminimalLeafsAndParentsAndTreeHighThreeWHENremoveRrecordRightParentRightChildTHENproperSquashes) {
+    // Prepare case record
+    const uint64_t key = 6;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 4, 2, 0, 0); // Root
+    write_page(begin_state, 1, 3, 3, 4, 0, 0); // Node 1
+    write_page(begin_state, 1, 5, 5, 6, 0, 0); // Node 2
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 4); // Node 3
+    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR, 5); // Node 4
+    write_page(begin_state, 1, 5, "AA55555", 0, ZERO_STR, 6); // Node 5
+    write_page(begin_state, 1, 6, "AA66666", 0, ZERO_STR, 0); // Node 6
+    createContainer(3);
+
+    // Prepare expected end state
+    write_page(end_state, 2, 3, 3, 4, 4, 5); // Root
+    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 4); // Node 3
+    write_page(end_state, 1, 4, "AA44444", 0, ZERO_STR, 5); // Node 4
+    write_page(end_state, 1, 5, "AA55555", 0, ZERO_STR, 0); // Node 5
+
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENminimalLeafsAndfullParentsAndTreeHighThreeWHENremoveLastRrecordFromRightMostChildOfParentTHENproperSquashAndRootChange) {
+    // Prepare case record
+    const uint64_t key = 5;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 5, 2, 0, 0); // Root
+    write_page(begin_state, 2, 3, 3, 4, 4, 5); // Node 1
+    write_page(begin_state, 2, 6, 6, 7, 7, 8); // Node 2
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 4); // Node 3
+    write_page(begin_state, 1, 4, "AA44444", 0, ZERO_STR, 5); // Node 4
+    write_page(begin_state, 1, 5, "AA55555", 0, ZERO_STR, 6); // Node 5
+    write_page(begin_state, 1, 6, "AA66666", 0, ZERO_STR, 7); // Node 6
+    write_page(begin_state, 1, 7, "AA77777", 0, ZERO_STR, 8); // Node 7
+    write_page(begin_state, 1, 8, "AA88888", 0, ZERO_STR, 0); // Node 8
+    createContainer(3);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 4, 2, 0, 0); // Root
+    write_page(end_state, 1, 3, 3, 4, 0, 0); // Node 1
+    write_page(end_state, 2, 6, 6, 7, 7, 8); // Node 2
+    write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 4); // Node 3
+    write_page(end_state, 1, 4, "AA44444", 0, ZERO_STR, 6); // Node 4
+    write_page(end_state, 1, 6, "AA66666", 0, ZERO_STR, 7); // Node 6
+    write_page(end_state, 1, 7, "AA77777", 0, ZERO_STR, 8); // Node 7
+    write_page(end_state, 1, 8, "AA88888", 0, ZERO_STR, 0); // Node 8
+
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENleftBrotherFullWHENremoveLastRecordFromRightTHENproperRemoveAndCompensation) {
+    // Prepare case record
+    const uint64_t key = 7;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 2, 2, "AA22222", 3, "BB33333", 2);
+    write_page(begin_state, 1, 7, "AA77777", 0, ZERO_STR, 0);
+    createContainer(2);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 2, 2, 0, 0);
+    write_page(end_state, 1, 2, "AA22222", 0, ZERO_STR, 2);
+    write_page(end_state, 1, 3, "BB33333", 0, ZERO_STR, 0);
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENrightBrotherFullWHENremoveLastRecordFromLeftTHENproperRemoveAndCompensation) {
+    // Prepare case record
+    const uint64_t key = 7;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 3, 2, 0, 0);
+    write_page(begin_state, 1, 3, "AA33333", 0, ZERO_STR, 2);
+    write_page(begin_state, 2, 5, "AA55555", 7, "BB77777", 0);
+    createContainer(2);
+
+    // Prepare expected end state
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 5, 2, 0, 0);
+    write_page(end_state, 1, 5, "AA55555", 0, ZERO_STR, 2);
+    write_page(end_state, 1, 7, "BB77777", 0, ZERO_STR, 0);
+
+    // Do operation
+    auto ret = container->remove(key);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    // Validate real end state with expected end state
+    validate();
+}
+
+TEST_F(BTreeAdvancedTest, GIVENminimalLeafsAndBrotherOfParentFullAndTreeHighThreeWHENremoveRecordTHENproperSquashAndCompensation) {
+    // Prepare case record
+    const uint64_t key = 9;
+
+    // Prepare case begin state
+    write_page(begin_state, 1, 1, 7, 2, 0, 0); // Root
+    write_page(begin_state, 2, 3, 3, 4, 5, 5); // Node 1
+    write_page(begin_state, 1, 6, 8, 7, 0, 0); // Node 2
+    write_page(begin_state, 2, 1, "AA11111", 3, "BB33333", 4); // Node 3
+    write_page(begin_state, 2, 4, "AA44444", 5, "BB55555", 5); // Node 4
+    write_page(begin_state, 2, 6, "AA66666", 7, "BB77777", 6); // Node 5
+    write_page(begin_state, 1, 8, "AA88888", 0, ZERO_STR, 7);  // Node 6
+    write_page(begin_state, 1, 9, "AA99999", 0, ZERO_STR, 0);  // Node 7
+    createContainer(3);
+
+    // Prepare expected end state
+    write_page(end_state, 1, 1, 5, 2, 0, 0); // Root
+    write_page(end_state, 1, 3, 3, 4, 0, 0); // Node 1
+    write_page(end_state, 1, 5, 7, 6, 0, 0); // Node 2
+    write_page(end_state, 2, 1, "AA11111", 3, "BB33333", 4); // Node 3
+    write_page(end_state, 2, 4, "AA44444", 5, "BB55555", 5); // Node 4
+    write_page(end_state, 2, 6, "AA66666", 7, "BB77777", 6); // Node 5
+    write_page(end_state, 1, 8, "AA88888", 0, ZERO_STR, 0);  // Node 6
+
+
+    // Do operation
+    auto ret = container->remove(key);
     ASSERT_EQ(ret, btree::SUCCESS);
 
     // Validate real end state with expected end state
