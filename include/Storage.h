@@ -138,10 +138,10 @@ public:
         return height;
     }
 
-    uint64_t get_free_offset(bool reserve = false) {
+    uint64_t get_free_offset(bool reserve = false, bool force_end_offset = false) {
         uint64_t offset = 0;
 
-        if (free_offsets.empty()) {
+        if (free_offsets.empty() || force_end_offset) {
             offset = end_offset;
         } else {
             offset = *free_offsets.begin();

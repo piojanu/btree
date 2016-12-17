@@ -269,6 +269,14 @@ TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteExistingOffsetAndGetFree
     EXPECT_EQ(offset, 1);
 }
 
+TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENdeleteExistingOffsetAndGetEndOffsetTHENreturnsProperEndOffset) {
+    auto ret = storage.delete_node(1);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    auto offset = storage.get_free_offset(false, true);
+    EXPECT_EQ(offset, nodes_count);
+}
+
 TEST_F(StorageBasicTest, GIVENstorageWithNodesWHENreserveIllegalOffsetTHENreturnsErrorCode) {
     auto ret = storage.reserve_offset(nodes_count - 1);
     EXPECT_EQ(ret, btree::INVALID_OFFSET);

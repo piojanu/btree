@@ -6,6 +6,8 @@
 
 #include <cstdint>
 #include <fstream>
+#include <unordered_set>
+#include <iosfwd>
 
 namespace btree {
 
@@ -26,8 +28,10 @@ public:
             perror("Error occurred while opening file buffer in Container constructor!");
         }
 
-        index_data = static_cast<std::iostream *>(file);
-        storage = new Storage<RECORDS_IN_NODE>(index_data, height);
+        if (good) {
+            index_data = static_cast<std::iostream *>(file);
+            storage = new Storage<RECORDS_IN_NODE>(index_data, height);
+        }
     }
 
     Container(std::iostream *stream, const uint64_t &_height, const uint64_t &nodes_count) : Container() {
@@ -150,19 +154,20 @@ ERROR_HANDLER:
     int print_data_ordered(std::ostream &out) {
         auto ext_node = new ExtendedNode<RECORDS_IN_NODE>[height];
         auto leaf = ext_node + height - 1;
+        auto next_node = &leaf->node;
 
         auto ret = storage->find_node(1, ext_node);
         if (ret != SUCCESS) {
             goto ERROR_HANDLER;
         }
 
-        auto next_node = &leaf->node;
         do {
-            for( auto i = 0ULL; i < next_node->usage; i++ ) {
-                out << next_node->node_entries[i].offset << " " << std::string(next_node->node_entries[i].record.value) << " ";
+            for (auto i = 0ULL; i < next_node->usage; i++) {
+                out << next_node->node_entries[i].offset << " " << std::string(next_node->node_entries[i].record.value)
+                    << " ";
             }
 
-            if( next_node->next_offset != 0 ) {
+            if (next_node->next_offset != 0) {
                 storage->open_node(next_node->next_offset, next_node);
             } else {
                 break;
@@ -176,7 +181,67 @@ ERROR_HANDLER:
 
     // Print raw index file.
     int print_raw_file(std::ostream &out) {
-        return NOT_IMPLEMENTED;
+        // Obtain list of leafs to properly parse them.
+        std::unordered_set<uint64_t> leafs_set;
+        uint64_t next_offset = 0;
+        auto ext_node = new ExtendedNode<RECORDS_IN_NODE>[height];
+        auto leaf = ext_node + height - 1;
+        auto next_node = &leaf->node;
+
+        auto ret = storage->find_node(1, ext_node);
+        if (ret != SUCCESS) {
+            goto ERROR_HANDLER;
+        }
+
+        next_offset = leaf->offset;
+        do {
+            leafs_set.insert(next_offset);
+
+            next_offset = next_node->next_offset;
+            if (next_offset != 0) {
+                storage->open_node(next_offset, next_node);
+            } else {
+                break;
+            }
+        } while (true);
+
+        // Print every page to end offset
+        out << "Node iter | usage | ";
+        for (auto j = 0U; j < RECORDS_IN_NODE; j++) {
+            out << "off/key | key/val | ";
+        }
+        out << "off/res | reserv. | next/res" << std::endl;
+
+        for (auto i = 0ULL; i < storage->get_free_offset(false, true); i++) {
+            auto ret = storage->open_node(i, next_node);
+            if (ret == INVALID_OFFSET) { // This offset is probably free
+                out << "Node: " << std::setw(3) << std::right << i << " | " <<
+                                   std::setw(5) << std::setfill('-') << "-" << " | ";
+                for (auto j = 0U; j < RECORDS_IN_NODE + 1; j++) {
+                        out << std::setw(7) << std::setfill('-') << "-" << " | " <<
+                               std::setw(7) << std::setfill('-') << "-" << " | ";
+                }
+                out << std::setw(8) << std::setfill('-') << "-" << std::setfill(' ') << std::endl;
+            } else {
+                out << "Node: " << std::setw(3) << std::right << i << " | " <<
+                    std::setw(5) << std::right << next_node->usage << " | ";
+                for (auto j = 0U; j < RECORDS_IN_NODE + 1; j++) {
+                    if (leafs_set.find(i) != leafs_set.end()) {
+                        out << std::setw(7) << std::right << next_node->node_entries[j].offset << " | " <<
+                            std::setw(7) << std::right << std::string(next_node->node_entries[j].record.value) << " | ";
+                    } else {
+                        out << std::setw(7) << std::right << next_node->node_entries[j].offset << " | " <<
+                            std::setw(7) << std::right << next_node->node_entries[j].record.key << " | ";
+                    }
+                }
+                out << std::setw(8) << std::right << next_node->next_offset << std::endl;
+            }
+        }
+
+        ret = SUCCESS;
+ERROR_HANDLER:
+        delete[] ext_node;
+        return ret;
     }
 
     // Returns true if object is properly initialised.
