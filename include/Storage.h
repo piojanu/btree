@@ -93,6 +93,10 @@ public:
             return INVALID_OFFSET;
         }
 
+        // TODO: Horrible! This monster is here because of close dead line and bad tests assumption.
+        Node<RECORDS_IN_NODE> empty{};
+        write_node(offset, &empty, true);
+
         free_offsets.insert(offset);
         return SUCCESS;
     }

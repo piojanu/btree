@@ -119,7 +119,28 @@ ERROR_HANDLER:
             return INVALID_KEY;
         }
 
-        return NOT_IMPLEMENTED;
+        if (height == 0) { // Empty tree
+            return RECORD_NOT_FOUND;
+        } else { // Tree with at least root
+            auto node_path = new ExtendedNode<RECORDS_IN_NODE>[height];
+            auto leaf = node_path + height - 1;
+
+            auto ret = storage->find_node(key, node_path);
+            if (ret != SUCCESS) {
+                goto ERROR_HANDLER;
+            }
+
+            if (leaf->node.node_entries[leaf->index].offset != key) {
+                ret = RECORD_NOT_FOUND;
+                goto ERROR_HANDLER;
+            }
+
+            ret = remove_entry(leaf, height);
+
+ERROR_HANDLER:
+            delete[] node_path;
+            return ret;
+        }
     }
 
     // Get value of given key.
@@ -216,10 +237,10 @@ ERROR_HANDLER:
             auto ret = storage->open_node(i, next_node);
             if (ret == INVALID_OFFSET) { // This offset is probably free
                 out << "Node: " << std::setw(3) << std::right << i << " | " <<
-                                   std::setw(5) << std::setfill('-') << "-" << " | ";
+                    std::setw(5) << std::setfill('-') << "-" << " | ";
                 for (auto j = 0U; j < RECORDS_IN_NODE + 1; j++) {
-                        out << std::setw(7) << std::setfill('-') << "-" << " | " <<
-                               std::setw(7) << std::setfill('-') << "-" << " | ";
+                    out << std::setw(7) << std::setfill('-') << "-" << " | " <<
+                        std::setw(7) << std::setfill('-') << "-" << " | ";
                 }
                 out << std::setw(8) << std::setfill('-') << "-" << std::setfill(' ') << std::endl;
             } else {
@@ -271,6 +292,26 @@ protected:
 
         if (clear) {
             memset(&node->node_entries[start_index], 0, step * sizeof(NodeEntry));
+        }
+
+        return SUCCESS;
+    }
+
+    // Shift higher values to left (start_index is included).
+    // If param 'clear' is true it will clear shifted entries.
+    // NOTE: There has to be space for this shift!
+    inline int
+    shift_to_left(Node<RECORDS_IN_NODE> *leaf, uint32_t start_index, uint32_t step = 1, bool clear = false) const {
+        if (start_index - step < 0) {
+            return NOT_ENOUGH_SPACE;
+        }
+
+        for (int64_t i = start_index; i < leaf->usage; i++) {
+            memcpy(&leaf->node_entries[i - step], &leaf->node_entries[i], sizeof(NodeEntry));
+        }
+
+        if (clear) {
+            memset(&leaf->node_entries[leaf->usage - step], 0, step * sizeof(NodeEntry));
         }
 
         return SUCCESS;
@@ -472,15 +513,14 @@ protected:
     }
 
     // Inserts entry into specified index.
-    // Take care about all all splits and compensations.
+    // Take care about all splits, compensations and recursive insertion.
+    // NOTE: Note can't be already in node!
     int insert_entry(ExtendedNode<RECORDS_IN_NODE> *node, const NodeEntry new_entry, uint64_t level,
                      bool is_leaf = true) {
-        auto ret = 0;
-
         if (node->node.usage < RECORDS_IN_NODE) { // Node has space for new record.
-            ret = shift_to_right(&node->node, node->index, 1, false, !is_leaf);
+            auto ret = shift_to_right(&node->node, node->index, 1, false, !is_leaf);
             if (ret != SUCCESS) {
-                goto RETURN;
+                return ret;
             }
 
             if (is_leaf) {
@@ -527,8 +567,7 @@ protected:
                 // Increment height
                 height++;
 
-                ret = SUCCESS;
-                goto RETURN;
+                return SUCCESS;
             }
 
             // !!! Fetch brothers.
@@ -557,8 +596,7 @@ protected:
                 storage->write_node(node->offset, &node->node, true);
                 storage->write_node(left_brother.offset, &left_brother.node, true);
 
-                ret = SUCCESS;
-                goto RETURN;
+                return SUCCESS;
             } else if (right_brother.node.usage > 0 && right_brother.node.usage < RECORDS_IN_NODE) {
                 // Set mid_key if it isn't node
                 uint64_t *mid_key = nullptr;
@@ -579,8 +617,7 @@ protected:
                 storage->write_node(node->offset, &node->node, true);
                 storage->write_node(right_brother.offset, &right_brother.node, true);
 
-                ret = SUCCESS;
-                goto RETURN;
+                return SUCCESS;
             }
 
             // !!! No space in brothers. So let's split!
@@ -601,11 +638,192 @@ protected:
 
             // Insert new record into parent.
             NodeEntry parent_new_entry = {ext_node.offset, mid_key};
-            ret = insert_entry(parent, parent_new_entry, level - 1, false);
+            return insert_entry(parent, parent_new_entry, level - 1, false);
+        }
+    }
+
+    // Deletes entry in node at specified index.
+    // NOTE: It decrements usage.
+    //       It also deletes node at offset pointed by deleted record (if inner node).
+    inline void
+    delete_entry(Node<RECORDS_IN_NODE> *node, uint32_t index, bool is_leaf = true) const {
+        if (!is_leaf) {
+            storage->delete_node(node->node_entries[index].offset);
         }
 
-RETURN:
-        return ret;
+        // If it isn't last index just shift
+        if (index + is_leaf < node->usage) {
+            shift_to_left(node, index + 1, 1, true);
+        } else {
+            memset(node->node_entries + index, 0, sizeof(NodeEntry));
+
+            // If it is inner node, delete previous key.
+            if (!is_leaf) {
+                if (index - 1 >= 0) {
+                    node->node_entries[index - 1].record.key = 0;
+                }
+            }
+        }
+        node->usage--;
+    }
+
+    // Merge two nodes and split equally.
+    // 'in_right' flag indicates to witch node new element should be added (left = 0, right = 1).
+    // If mid_key is set it indicates inner node.
+    // NOTE: If it's inner node, then mid_key from parent will be automatically set to proper value.
+    //       If it's leaf, then you have to explicitly set key in parent node.
+    // TODO: Change this shit.
+    /*inline void
+    compensate_remove(Node<RECORDS_IN_NODE> *left, Node<RECORDS_IN_NODE> *right, uint32_t index, bool in_right,
+                      uint64_t *mid_key = nullptr) const {
+        auto sum_usage = left->usage + right->usage + 1;
+        auto right_new_usage = static_cast<uint64_t>((sum_usage + 1) / 2);
+        auto left_new_usage = sum_usage - right_new_usage;
+
+        // Fill left half, mid and right half of one long node
+        auto node_entries = new NodeEntry[sum_usage + 2 * (mid_key != nullptr)];
+        auto node_iter = 0ULL;
+
+        // Left half
+        if (!in_right) {
+            memcpy(node_entries, left->node_entries, index * sizeof(NodeEntry));
+            node_iter += index;
+
+            // Add new entry
+            auto new_entry_index = node_iter;
+            if (mid_key != nullptr) {
+                node_entries[new_entry_index].offset = left->node_entries[index].offset;
+            } else {
+                fill_leaf_entry(node_entries + new_entry_index, new_entry.offset, new_entry.record.value);
+            }
+            node_iter += 1;
+
+            memcpy(node_entries + node_iter, left->node_entries + index,
+                   (left->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
+            node_iter = left->usage + 1;
+
+            // If it is inner node, now end adding new entry.
+            if (mid_key != nullptr) {
+                fill_node_entry(node_entries + new_entry_index, new_entry.record.key, new_entry.offset);
+            }
+        } else {
+            memcpy(node_entries, left->node_entries, (left->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+            node_iter = left->usage;
+        }
+
+        //Mid
+        if (mid_key != nullptr) {
+            node_entries[node_iter].record.key = *mid_key;
+            node_iter++;
+        }
+
+        // Right half
+        if (in_right) {
+            memcpy(node_entries + node_iter, right->node_entries, index * sizeof(NodeEntry));
+            node_iter += index;
+
+            // Add new entry
+            auto new_entry_index = node_iter;
+            if (mid_key != nullptr) {
+                node_entries[new_entry_index].offset = right->node_entries[index].offset;
+            } else {
+                fill_leaf_entry(node_entries + new_entry_index, new_entry.offset, new_entry.record.value);
+            }
+            node_iter += 1;
+
+            memcpy(node_entries + node_iter, right->node_entries + index,
+                   (right->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
+
+            // If it is inner node, now end adding new entry.
+            if (mid_key != nullptr) {
+                fill_node_entry(node_entries + new_entry_index, new_entry.record.key, new_entry.offset);
+            }
+        } else {
+            memcpy(node_entries + node_iter, right->node_entries,
+                   (right->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+        }
+
+        // Set new mid_key and erase it in note_entries
+        if (mid_key != nullptr) {
+            *mid_key = node_entries[left_new_usage].record.key;
+            node_entries[left_new_usage].record.key = 0;
+        }
+
+        // Clear nodes...
+        memset(left->node_entries, 0, (left->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+        memset(right->node_entries, 0, (right->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+
+        // ...and distribute each new half to proper node.
+        memcpy(left->node_entries, node_entries, (left_new_usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+        memcpy(right->node_entries, node_entries + left_new_usage + (mid_key != nullptr),
+               (right_new_usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+
+        // Set new usage.
+        left->usage = left_new_usage;
+        right->usage = right_new_usage;
+
+        delete[] node_entries;
+    }*/
+
+    // Removes entry from specified index.
+    // Take care about all squashes, compensations and recursive removal.
+    // NOTE: Entry has to be there!
+    int remove_entry(ExtendedNode<RECORDS_IN_NODE> *node, uint64_t level, bool is_leaf = true) {
+        // Check if we are root
+        if (level == 1) {
+            if (node->node.usage > 1) {
+                delete_entry(&node->node, node->index, is_leaf);
+                storage->write_node(node->offset, &node->node, true);
+            } else {
+                if (is_leaf) {
+                    storage->delete_node(0);
+                    height = 0;
+                } else {
+                    delete_entry(&node->node, node->index, is_leaf);
+
+                    Node<RECORDS_IN_NODE> node_tmp{};
+                    storage->open_node(node->node.node_entries[0].offset, &node_tmp);
+                    storage->write_node(0, &node_tmp, true);
+                    storage->delete_node(node->node.node_entries[0].offset);
+
+                    height--;
+                }
+            }
+
+            return SUCCESS;
+        } else { // We are deeper (not root)
+            // Check if after remove, there will be enough records
+            if ((node->node.usage - 1) >= RECORDS_IN_NODE / 2) {
+                delete_entry(&node->node, node->index, is_leaf);
+                storage->write_node(node->offset, &node->node, true);
+
+                // If it was right most record in leaf, then change parent key.
+                if (is_leaf && node->index == node->node.usage) {
+                    auto parent = node - 1;
+                    while (true) {
+                        if (parent->node.usage != parent->index) {
+                            parent->node.node_entries[parent->index].record.key =
+                                    node->node.node_entries[node->index - 1].offset;
+                            break;
+                        }
+
+                        // It is right most record in entire tree.
+                        if (parent->offset == 0) {
+                            break;
+                        }
+
+                        parent--;
+                    }
+                    storage->write_node(parent->offset, &parent->node, true);
+                }
+
+                return SUCCESS;
+            } else { // Shit happened, try compensate if possible, otherwise squash.
+
+            }
+        }
+
+        return NOT_IMPLEMENTED;
     }
 
 private:
