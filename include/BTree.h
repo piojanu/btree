@@ -489,7 +489,7 @@ protected:
             fill_node_entry(node_entries + new_entry_index, new_entry.record.key, new_entry.offset);
         }
 
-        // Set mid_key and erase it in note_entries if it is inner node
+        // Set mid_key and erase it in node_entries if it is inner node
         if (!is_leaf) {
             mid_key = node_entries[old_new_usage].record.key;
             node_entries[old_new_usage].record.key = 0;
@@ -577,7 +577,7 @@ protected:
 
             // Check brothers if exist and have space. If so, compensate.
             if (left_brother.node.usage > 0 && left_brother.node.usage < RECORDS_IN_NODE) {
-                // Set mid_key if it isn't node
+                // Set mid_key if it isn't leaf
                 uint64_t *mid_key = nullptr;
                 if (!is_leaf) {
                     mid_key = &parent->node.node_entries[left_brother.index].record.key;
@@ -585,7 +585,7 @@ protected:
 
                 compensate(&left_brother.node, &node->node, new_entry, node->index, true, mid_key);
 
-                // Set new parent if it is node
+                // Set new parent if it is leaf
                 if (is_leaf) {
                     parent->node.node_entries[left_brother.index].record.key =
                             left_brother.node.node_entries[left_brother.node.usage - 1].offset;
@@ -598,7 +598,7 @@ protected:
 
                 return SUCCESS;
             } else if (right_brother.node.usage > 0 && right_brother.node.usage < RECORDS_IN_NODE) {
-                // Set mid_key if it isn't node
+                // Set mid_key if it isn't leaf
                 uint64_t *mid_key = nullptr;
                 if (!is_leaf) {
                     mid_key = &parent->node.node_entries[parent->index].record.key;
@@ -606,7 +606,7 @@ protected:
 
                 compensate(&node->node, &right_brother.node, new_entry, node->index, false, mid_key);
 
-                // Set new parent if it is node
+                // Set new parent if it is leaf
                 if (is_leaf) {
                     parent->node.node_entries[parent->index].record.key =
                             node->node.node_entries[node->node.usage - 1].offset;
@@ -667,16 +667,35 @@ protected:
         node->usage--;
     }
 
+    // Propagates new parent key up in tree structure.
+    inline void
+    propagate_parent_key(ExtendedNode<RECORDS_IN_NODE> *parent, const uint64_t key) {
+        while (true) {
+            if (parent->node.usage != parent->index) {
+                parent->node.node_entries[parent->index].record.key = key;
+                break;
+            }
+
+            // It is right most record in entire tree.
+            if (parent->offset == 0) {
+                break;
+            }
+
+            parent--;
+        }
+        storage->write_node(parent->offset, &parent->node, true);
+    }
+
     // Merge two nodes and split equally.
-    // 'in_right' flag indicates to witch node new element should be added (left = 0, right = 1).
+    // 'in_right' flag indicates from witch node record should be removed (left = 0, right = 1).
     // If mid_key is set it indicates inner node.
     // NOTE: If it's inner node, then mid_key from parent will be automatically set to proper value.
     //       If it's leaf, then you have to explicitly set key in parent node.
     // TODO: Change this shit.
-    /*inline void
+    inline void
     compensate_remove(Node<RECORDS_IN_NODE> *left, Node<RECORDS_IN_NODE> *right, uint32_t index, bool in_right,
                       uint64_t *mid_key = nullptr) const {
-        auto sum_usage = left->usage + right->usage + 1;
+        auto sum_usage = left->usage + right->usage - 1;
         auto right_new_usage = static_cast<uint64_t>((sum_usage + 1) / 2);
         auto left_new_usage = sum_usage - right_new_usage;
 
@@ -689,23 +708,12 @@ protected:
             memcpy(node_entries, left->node_entries, index * sizeof(NodeEntry));
             node_iter += index;
 
-            // Add new entry
-            auto new_entry_index = node_iter;
-            if (mid_key != nullptr) {
-                node_entries[new_entry_index].offset = left->node_entries[index].offset;
-            } else {
-                fill_leaf_entry(node_entries + new_entry_index, new_entry.offset, new_entry.record.value);
-            }
-            node_iter += 1;
+            // Skip record which has to be deleted.
+            index += 1;
 
             memcpy(node_entries + node_iter, left->node_entries + index,
                    (left->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
-            node_iter = left->usage + 1;
-
-            // If it is inner node, now end adding new entry.
-            if (mid_key != nullptr) {
-                fill_node_entry(node_entries + new_entry_index, new_entry.record.key, new_entry.offset);
-            }
+            node_iter = left->usage - 1;
         } else {
             memcpy(node_entries, left->node_entries, (left->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
             node_iter = left->usage;
@@ -722,28 +730,21 @@ protected:
             memcpy(node_entries + node_iter, right->node_entries, index * sizeof(NodeEntry));
             node_iter += index;
 
-            // Add new entry
-            auto new_entry_index = node_iter;
-            if (mid_key != nullptr) {
-                node_entries[new_entry_index].offset = right->node_entries[index].offset;
-            } else {
-                fill_leaf_entry(node_entries + new_entry_index, new_entry.offset, new_entry.record.value);
-            }
-            node_iter += 1;
+            // Skip record which has to be deleted.
+            index += 1;
 
-            memcpy(node_entries + node_iter, right->node_entries + index,
-                   (right->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
-
-            // If it is inner node, now end adding new entry.
-            if (mid_key != nullptr) {
-                fill_node_entry(node_entries + new_entry_index, new_entry.record.key, new_entry.offset);
+            if (right->usage - index + (mid_key != nullptr) > 0) {
+                memcpy(node_entries + node_iter, right->node_entries + index,
+                       (right->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
+            } else if (mid_key != nullptr) { // If deleted record was right most of inner node, then delete key of new last record.
+                node_entries[sum_usage + 1].record.key = 0;
             }
         } else {
             memcpy(node_entries + node_iter, right->node_entries,
                    (right->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
         }
 
-        // Set new mid_key and erase it in note_entries
+        // Set new mid_key and erase it in node_entries
         if (mid_key != nullptr) {
             *mid_key = node_entries[left_new_usage].record.key;
             node_entries[left_new_usage].record.key = 0;
@@ -763,7 +764,7 @@ protected:
         right->usage = right_new_usage;
 
         delete[] node_entries;
-    }*/
+    }
 
     // Removes entry from specified index.
     // Take care about all squashes, compensations and recursive removal.
@@ -793,33 +794,76 @@ protected:
             return SUCCESS;
         } else { // We are deeper (not root)
             // Check if after remove, there will be enough records
-            if ((node->node.usage - 1) >= RECORDS_IN_NODE / 2) {
+            if ((node->node.usage - 1) >= static_cast<uint64_t>(RECORDS_IN_NODE / 2)) {
                 delete_entry(&node->node, node->index, is_leaf);
                 storage->write_node(node->offset, &node->node, true);
 
                 // If it was right most record in leaf, then change parent key.
                 if (is_leaf && node->index == node->node.usage) {
-                    auto parent = node - 1;
-                    while (true) {
-                        if (parent->node.usage != parent->index) {
-                            parent->node.node_entries[parent->index].record.key =
-                                    node->node.node_entries[node->index - 1].offset;
-                            break;
-                        }
-
-                        // It is right most record in entire tree.
-                        if (parent->offset == 0) {
-                            break;
-                        }
-
-                        parent--;
-                    }
-                    storage->write_node(parent->offset, &parent->node, true);
+                    propagate_parent_key(node - 1, node->node.node_entries[node->node.usage - 1].offset);
                 }
 
                 return SUCCESS;
             } else { // Shit happened, try compensate if possible, otherwise squash.
+                // !!! Fetch brothers.
+                ExtendedNode<RECORDS_IN_NODE> left_brother{}, right_brother{};
+                fetch_brothers(node, &left_brother, &right_brother);
+                auto parent = node - 1;
 
+                // Check brothers if exist and have enough records to compensate.
+                if (left_brother.node.usage > 0 && left_brother.node.usage + node->node.usage > RECORDS_IN_NODE) {
+                    // Set mid_key if it isn't leaf
+                    uint64_t *mid_key = nullptr;
+                    if (!is_leaf) {
+                        mid_key = &parent->node.node_entries[left_brother.index].record.key;
+                    }
+
+                    // If deleting record is right most in leaf and not only record, then parent key will be propagated.
+                    uint64_t key = 0;
+                    if (is_leaf && node->index + 1 == node->node.usage && node->index > 0) {
+                        key = node->node.node_entries[node->index - 1].offset;
+                    }
+
+                    compensate_remove(&left_brother.node, &node->node, node->index, true, mid_key);
+
+                    // Set new parent if it is leaf
+                    if (is_leaf) {
+                        parent->node.node_entries[left_brother.index].record.key =
+                                left_brother.node.node_entries[left_brother.node.usage - 1].offset;
+                    }
+
+                    if (key > 0) {
+                        propagate_parent_key(node - 1, key);
+                    }
+
+                    // Persist
+                    storage->write_node(parent->offset, &parent->node, true);
+                    storage->write_node(node->offset, &node->node, true);
+                    storage->write_node(left_brother.offset, &left_brother.node, true);
+
+                    return SUCCESS;
+                } else if (right_brother.node.usage > 0 && right_brother.node.usage + node->node.usage > RECORDS_IN_NODE) {
+                    // Set mid_key if it isn't leaf
+                    uint64_t *mid_key = nullptr;
+                    if (!is_leaf) {
+                        mid_key = &parent->node.node_entries[parent->index].record.key;
+                    }
+
+                    compensate_remove(&node->node, &right_brother.node, node->index, false, mid_key);
+
+                    // Set new parent if it is leaf
+                    if (is_leaf) {
+                        parent->node.node_entries[parent->index].record.key =
+                                node->node.node_entries[node->node.usage - 1].offset;
+                    }
+
+                    // Persist
+                    storage->write_node(parent->offset, &parent->node, true);
+                    storage->write_node(node->offset, &node->node, true);
+                    storage->write_node(right_brother.offset, &right_brother.node, true);
+
+                    return SUCCESS;
+                }
             }
         }
 
