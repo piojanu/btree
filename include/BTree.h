@@ -301,17 +301,18 @@ protected:
     // If param 'clear' is true it will clear shifted entries.
     // NOTE: There has to be space for this shift!
     inline int
-    shift_to_left(Node<RECORDS_IN_NODE> *leaf, uint32_t start_index, uint32_t step = 1, bool clear = false) const {
+    shift_to_left(Node<RECORDS_IN_NODE> *leaf, uint32_t start_index, uint32_t step = 1, bool clear = false,
+                  bool inner = false) const {
         if (start_index - step < 0) {
             return NOT_ENOUGH_SPACE;
         }
 
-        for (int64_t i = start_index; i < leaf->usage; i++) {
+        for (int64_t i = start_index; i < leaf->usage + inner; i++) {
             memcpy(&leaf->node_entries[i - step], &leaf->node_entries[i], sizeof(NodeEntry));
         }
 
         if (clear) {
-            memset(&leaf->node_entries[leaf->usage - step], 0, step * sizeof(NodeEntry));
+            memset(&leaf->node_entries[leaf->usage + inner - step], 0, step * sizeof(NodeEntry));
         }
 
         return SUCCESS;
@@ -653,7 +654,7 @@ protected:
 
         // If it isn't last index just shift
         if (index + is_leaf < node->usage) {
-            shift_to_left(node, index + 1, 1, true);
+            shift_to_left(node, index + 1, 1, true, !is_leaf);
         } else {
             memset(node->node_entries + index, 0, sizeof(NodeEntry));
 
@@ -708,7 +709,11 @@ protected:
             memcpy(node_entries, left->node_entries, index * sizeof(NodeEntry));
             node_iter += index;
 
-            // Skip record which has to be deleted.
+            // Skip record which has to be deleted
+            // and delete node at witch it points (if not leaf).
+            if (mid_key != nullptr) {
+                storage->delete_node(left->node_entries[index].offset);
+            }
             index += 1;
 
             memcpy(node_entries + node_iter, left->node_entries + index,
@@ -730,13 +735,18 @@ protected:
             memcpy(node_entries + node_iter, right->node_entries, index * sizeof(NodeEntry));
             node_iter += index;
 
-            // Skip record which has to be deleted.
+            // Skip record which has to be deleted
+            // and delete node at witch it points (if not leaf).
+            if (mid_key != nullptr) {
+                storage->delete_node(right->node_entries[index].offset);
+            }
             index += 1;
 
             if (right->usage - index + (mid_key != nullptr) > 0) {
                 memcpy(node_entries + node_iter, right->node_entries + index,
                        (right->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
-            } else if (mid_key != nullptr) { // If deleted record was right most of inner node, then delete key of new last record.
+            } else if (mid_key !=
+                       nullptr) { // If deleted record was right most of inner node, then delete key of new last record.
                 node_entries[sum_usage + 1].record.key = 0;
             }
         } else {
@@ -762,6 +772,81 @@ protected:
         // Set new usage.
         left->usage = left_new_usage;
         right->usage = right_new_usage;
+
+        delete[] node_entries;
+    }
+
+    // Squash two nodes.
+    // 'in_right' flag indicates from witch node record should be removed (left = 0, right = 1).
+    // If mid_key is set it indicates inner node.
+    // NOTE: Manipulation with parent records must be done manually.
+    inline void
+    squash(Node<RECORDS_IN_NODE> *left, Node<RECORDS_IN_NODE> *right, uint32_t index, bool in_right,
+           uint64_t *mid_key = nullptr) const {
+        auto sum_usage = left->usage + right->usage - 1;
+
+        // Fill left half, mid and right half of one long node
+        auto node_entries = new NodeEntry[sum_usage + 2 * (mid_key != nullptr)];
+        auto node_iter = 0ULL;
+
+        // Left half
+        if (!in_right) {
+            memcpy(node_entries, left->node_entries, index * sizeof(NodeEntry));
+            node_iter += index;
+
+            // Skip record which has to be deleted
+            // and delete node at witch it points (if not leaf).
+            if (mid_key != nullptr) {
+                storage->delete_node(left->node_entries[index].offset);
+            }
+            index += 1;
+
+            memcpy(node_entries + node_iter, left->node_entries + index,
+                   (left->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
+            node_iter = left->usage - 1;
+        } else {
+            memcpy(node_entries, left->node_entries, (left->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+            node_iter = left->usage;
+        }
+
+        //Mid
+        if (mid_key != nullptr) {
+            node_entries[node_iter].record.key = *mid_key;
+            node_iter++;
+        }
+
+        // Right half
+        if (in_right) {
+            memcpy(node_entries + node_iter, right->node_entries, index * sizeof(NodeEntry));
+            node_iter += index;
+
+            // Skip record which has to be deleted
+            // and delete node at witch it points (if not leaf).
+            if (mid_key != nullptr) {
+                storage->delete_node(right->node_entries[index].offset);
+            }
+            index += 1;
+
+            if (right->usage - index + (mid_key != nullptr) > 0) {
+                memcpy(node_entries + node_iter, right->node_entries + index,
+                       (right->usage - index + (mid_key != nullptr)) * sizeof(NodeEntry));
+            } else if (mid_key !=
+                       nullptr) { // If deleted record was right most of inner node, then delete key of new last record.
+                node_entries[sum_usage + 1].record.key = 0;
+            }
+        } else {
+            memcpy(node_entries + node_iter, right->node_entries,
+                   (right->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+        }
+
+        // Clear left node...
+        memset(left->node_entries, 0, (left->usage + (mid_key != nullptr)) * sizeof(NodeEntry));
+
+        // ...and copy node_entries.
+        memcpy(left->node_entries, node_entries, (sum_usage + 2 * (mid_key != nullptr)) * sizeof(NodeEntry));
+
+        // Set new usage.
+        left->usage = sum_usage + (mid_key != nullptr);
 
         delete[] node_entries;
     }
@@ -818,22 +903,17 @@ protected:
                         mid_key = &parent->node.node_entries[left_brother.index].record.key;
                     }
 
-                    // If deleting record is right most in leaf and not only record, then parent key will be propagated.
-                    uint64_t key = 0;
+                    // If deleting record is right most in leaf and not the only record, then parent key will be propagated.
                     if (is_leaf && node->index + 1 == node->node.usage && node->index > 0) {
-                        key = node->node.node_entries[node->index - 1].offset;
+                        propagate_parent_key(node - 1, node->node.node_entries[node->index - 1].offset);
                     }
 
                     compensate_remove(&left_brother.node, &node->node, node->index, true, mid_key);
 
-                    // Set new parent if it is leaf
+                    // Set new parent key if it is leaf
                     if (is_leaf) {
                         parent->node.node_entries[left_brother.index].record.key =
                                 left_brother.node.node_entries[left_brother.node.usage - 1].offset;
-                    }
-
-                    if (key > 0) {
-                        propagate_parent_key(node - 1, key);
                     }
 
                     // Persist
@@ -842,7 +922,8 @@ protected:
                     storage->write_node(left_brother.offset, &left_brother.node, true);
 
                     return SUCCESS;
-                } else if (right_brother.node.usage > 0 && right_brother.node.usage + node->node.usage > RECORDS_IN_NODE) {
+                } else if (right_brother.node.usage > 0 &&
+                           right_brother.node.usage + node->node.usage > RECORDS_IN_NODE) {
                     // Set mid_key if it isn't leaf
                     uint64_t *mid_key = nullptr;
                     if (!is_leaf) {
@@ -851,7 +932,7 @@ protected:
 
                     compensate_remove(&node->node, &right_brother.node, node->index, false, mid_key);
 
-                    // Set new parent if it is leaf
+                    // Set new parent key if it is leaf
                     if (is_leaf) {
                         parent->node.node_entries[parent->index].record.key =
                                 node->node.node_entries[node->node.usage - 1].offset;
@@ -864,10 +945,69 @@ protected:
 
                     return SUCCESS;
                 }
+
+                // !!! Not enough space in brothers. So let's squash!
+                if (left_brother.node.usage > 0) {
+                    // Set mid_key if it isn't leaf
+                    uint64_t *mid_key = nullptr;
+                    if (!is_leaf) {
+                        mid_key = &parent->node.node_entries[left_brother.index].record.key;
+                    }
+
+                    // If deleting record is right most in leaf, then parent key will be propagated.
+                    if (is_leaf && node->index + 1 == node->node.usage) {
+                        // If it is not the only record.
+                        uint64_t key = 0;
+                        if (node->index > 0) {
+                            key = node->node.node_entries[node->index - 1].offset;
+                        } else {
+                            key = left_brother.node.node_entries[left_brother.node.usage - 1].offset;
+                        }
+
+                        propagate_parent_key(node - 1, key);
+                    }
+
+                    squash(&left_brother.node, &node->node, node->index, true, mid_key);
+
+                    // Set new left brother parent key.
+                    parent->node.node_entries[left_brother.index].record.key =
+                            parent->node.node_entries[parent->index].record.key;
+
+                    // Set left node 'next offset' to right node 'next offset'.
+                    left_brother.node.next_offset = node->node.next_offset;
+
+                    // Persist
+                    storage->write_node(parent->offset, &parent->node, true);
+                    storage->write_node(left_brother.offset, &left_brother.node, true);
+
+                    // Delete record in parent.
+                    return remove_entry(parent, level - 1, false);
+                } else {
+                    // Set mid_key if it isn't leaf
+                    uint64_t *mid_key = nullptr;
+                    if (!is_leaf) {
+                        mid_key = &parent->node.node_entries[parent->index].record.key;
+                    }
+
+                    squash(&node->node, &right_brother.node, node->index, false, mid_key);
+
+                    // Set new parent key.
+                    parent->node.node_entries[parent->index].record.key =
+                            parent->node.node_entries[right_brother.index].record.key;
+
+                    // Set left node 'next offset' to right node 'next offset'.
+                    node->node.next_offset = right_brother.node.next_offset;
+
+                    // Persist
+                    storage->write_node(parent->offset, &parent->node, true);
+                    storage->write_node(node->offset, &node->node, true);
+
+                    // Delete record in parent.
+                    parent->index++;
+                    return remove_entry(parent, level - 1, false);
+                }
             }
         }
-
-        return NOT_IMPLEMENTED;
     }
 
 private:

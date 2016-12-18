@@ -93,9 +93,10 @@ public:
             return INVALID_OFFSET;
         }
 
-        // TODO: Horrible! This monster is here because of close dead line and bad tests assumption.
+        // TODO: Horrible! This monster is here because of close dead line and bad tests assumption about emptiness of deleted nodes.
         Node<RECORDS_IN_NODE> empty{};
         write_node(offset, &empty, true);
+        g_iinfo.writes--;
 
         free_offsets.insert(offset);
         return SUCCESS;
@@ -111,7 +112,7 @@ public:
             }
         };
 
-        if (key < get_key(0)) {
+        if (key <= get_key(0)) {
             return 0;
         } else if (key > get_key(node->usage - 1)) {
             return node->usage;

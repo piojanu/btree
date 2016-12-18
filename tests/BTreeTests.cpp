@@ -947,6 +947,7 @@ TEST_F(BTreeAdvancedTest, GIVENminimalLeafsWHENremoveLastRecordFromLeftMostTHENp
     // Prepare expected end state
     write_page(end_state, 1, 1, 7, 3, 0 ,0); // Root
     write_page(end_state, 1, 7, "AA77777", 0, ZERO_STR, 3); // Node 1
+    write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);  // Node 2
     write_page(end_state, 1, 9, "AA99999", 0, ZERO_STR, 0); // Node 3
 
     // Do operation
@@ -969,8 +970,9 @@ TEST_F(BTreeAdvancedTest, GIVENminimalLeafsWHENremoveLastRecordFromMidTHENproper
     createContainer(2);
 
     // Prepare expected end state
-    write_page(end_state, 1, 1, 7, 3, 0 ,0); // Root
+    write_page(end_state, 1, 1, 3, 3, 0 ,0); // Root
     write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 3); // Node 1
+    write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);  // Node 2
     write_page(end_state, 1, 9, "AA99999", 0, ZERO_STR, 0); // Node 3
 
     // Do operation
@@ -1021,7 +1023,10 @@ TEST_F(BTreeAdvancedTest, GIVENminimalLeafsAndParentsAndTreeHighThreeWHENremoveR
 
     // Prepare expected end state
     write_page(end_state, 2, 3, 3, 5, 5, 6); // Root
+    write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);  // Node 1
+    write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);  // Node 2
     write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 5); // Node 3
+    write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);  // Node 4
     write_page(end_state, 1, 5, "AA55555", 0, ZERO_STR, 6); // Node 5
     write_page(end_state, 1, 6, "AA66666", 0, ZERO_STR, 0); // Node 6
 
@@ -1050,6 +1055,8 @@ TEST_F(BTreeAdvancedTest, GIVENminimalLeafsAndParentsAndTreeHighThreeWHENremoveR
 
     // Prepare expected end state
     write_page(end_state, 2, 3, 3, 4, 4, 5); // Root
+    write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);  // Node 1
+    write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);  // Node 2
     write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 4); // Node 3
     write_page(end_state, 1, 4, "AA44444", 0, ZERO_STR, 5); // Node 4
     write_page(end_state, 1, 5, "AA55555", 0, ZERO_STR, 0); // Node 5
@@ -1085,6 +1092,7 @@ TEST_F(BTreeAdvancedTest, GIVENminimalLeafsAndfullParentsAndTreeHighThreeWHENrem
     write_page(end_state, 2, 6, 6, 7, 7, 8); // Node 2
     write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 4); // Node 3
     write_page(end_state, 1, 4, "AA44444", 0, ZERO_STR, 6); // Node 4
+    write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);  // Node 5
     write_page(end_state, 1, 6, "AA66666", 0, ZERO_STR, 7); // Node 6
     write_page(end_state, 1, 7, "AA77777", 0, ZERO_STR, 8); // Node 7
     write_page(end_state, 1, 8, "AA88888", 0, ZERO_STR, 0); // Node 8
