@@ -126,6 +126,123 @@ struct BTreeAdvancedTest : public ::testing::Test {
     const char ZERO_STR[8] = {'\0'};
 };
 
+// ### BIG TEST ### //
+TEST(BTreeBigTest, GIVENrecordsWHENinsertedIntoContainerTHENproperOrderedPrint) {
+    // Prepare
+    std::stringstream container_stream{""};
+    btree::Container<RECORDS_IN_NODE> container(&container_stream, 0, 0);
+    std::set<uint64_t> sorted_keys{};
+    const char value[8] = "plzWORK";
+
+    std::vector<uint64_t> keys = {
+            12, 34, 13, 51, 43, 44, 42, 41, 40, 39, 100, 1,
+            222, 204, 213, 214, 215, 261, 260, 221, 223, 225, 270, 268, 263,
+            112, 134, 113, 151, 143, 144, 142, 141, 140, 139, 190, 11,
+            2, 4, 3, 14, 15, 61, 60, 21, 23, 25, 70, 68, 63
+    };
+    for (auto i = 0u; i < static_cast<int64_t >(keys.size()); i++) {
+        sorted_keys.insert(keys[i]);
+        auto ret = container.insert(keys[i], value);
+        ASSERT_EQ(ret, btree::SUCCESS) << "Key: " << i;
+    }
+
+    // Test
+    std::stringstream stream;
+    auto ret = container.print_data_ordered(stream);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    for (auto expect_key : sorted_keys) {
+        uint64_t key;
+        std::string value;
+
+        stream >> key >> value;
+        EXPECT_EQ(expect_key, key);
+        EXPECT_STREQ(value.c_str(), value.c_str());
+    }
+}
+
+TEST(BTreeBigTest, GIVENrandRecordsWHENinsertedIntoContainerTHENproperOrderedPrint) {
+    // Prepare
+    std::stringstream container_stream{""};
+    btree::Container<RECORDS_IN_NODE> container(&container_stream, 0, 0);
+    std::set<uint64_t> sorted_keys{};
+    const char value[8] = "plzWORK";
+
+
+    std::vector<uint64_t> keys{};
+    for (int i = 0; i < 100000; i++) {
+        keys.push_back(i + 3);
+    }
+
+    std::srand(77777);
+    std::random_shuffle(keys.begin(), keys.end());
+
+    for (auto i = 0u; i < static_cast<int64_t >(keys.size()); i++) {
+        sorted_keys.insert(keys[i]);
+        auto ret = container.insert(keys[i], value);
+        ASSERT_EQ(ret, btree::SUCCESS) << "Key: " << i;
+    }
+
+    // Test
+    std::stringstream stream;
+    auto ret = container.print_data_ordered(stream);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    for (auto expect_key : sorted_keys) {
+        uint64_t key;
+        std::string value;
+
+        stream >> key >> value;
+        EXPECT_EQ(expect_key, key);
+        EXPECT_STREQ(value.c_str(), value.c_str());
+    }
+}
+
+TEST(BTreeBigTest, GIVENrandRecordsWHENinsertedAndRemoveIntoContainerTHENproperOrderedPrint) {
+    // Prepare
+    std::stringstream container_stream{""};
+    btree::Container<RECORDS_IN_NODE> container(&container_stream, 0, 0);
+    std::set<uint64_t> sorted_keys{};
+    const char value[8] = "plzWORK";
+
+
+    std::vector<uint64_t> keys{};
+    for (int i = 0; i < 100000; i++) {
+        keys.push_back(i + 3);
+    }
+
+    std::srand(77777);
+    std::random_shuffle(keys.begin(), keys.end());
+
+    for (auto i = 0u; i < static_cast<int64_t >(keys.size()); i++) {
+        sorted_keys.insert(keys[i]);
+        auto ret = container.insert(keys[i], value);
+        ASSERT_EQ(ret, btree::SUCCESS) << "Key: " << i;
+    }
+
+    std::random_shuffle(keys.begin(), keys.end());
+
+    for (auto i = 0u; i < static_cast<int64_t >(keys.size()); i += 2) {
+        sorted_keys.erase(keys[i]);
+        auto ret = container.remove(keys[i]);
+        ASSERT_EQ(ret, btree::SUCCESS) << "Key: " << i;
+    }
+
+    // Test
+    std::stringstream stream;
+    auto ret = container.print_data_ordered(stream);
+    ASSERT_EQ(ret, btree::SUCCESS);
+
+    for (auto expect_key : sorted_keys) {
+        uint64_t key;
+        std::string value;
+
+        stream >> key >> value;
+        EXPECT_EQ(expect_key, key);
+        EXPECT_STREQ(value.c_str(), value.c_str());
+    }
+}
+
 // ### CREATION TESTS ### //
 
 TEST_F(BTreeCreationTest, GIVENnothingWHENcreateWithPathAndDeleteContainerTHENfileExists) {
@@ -970,7 +1087,7 @@ TEST_F(BTreeAdvancedTest, GIVENminimalLeafsWHENremoveLastRecordFromMidTHENproper
     createContainer(2);
 
     // Prepare expected end state
-    write_page(end_state, 1, 1, 3, 3, 0 ,0); // Root
+    write_page(end_state, 1, 1,  3, 3, 0 ,0); // Root
     write_page(end_state, 1, 3, "AA33333", 0, ZERO_STR, 3); // Node 1
     write_page(end_state, 0, 0, ZERO_STR, 0, ZERO_STR, 0);  // Node 2
     write_page(end_state, 1, 9, "AA99999", 0, ZERO_STR, 0); // Node 3

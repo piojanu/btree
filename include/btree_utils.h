@@ -14,7 +14,6 @@ enum : int {
     EMPTY_STORAGE = -5,
     NOT_ENOUGH_SPACE = -6,
     INVALID_KEY = -7,
-    NOT_IMPLEMENTED = -1000
 };
 
 struct SInternalInfo {
