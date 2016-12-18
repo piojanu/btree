@@ -130,7 +130,7 @@ struct BTreeAdvancedTest : public ::testing::Test {
 TEST(BTreeBigTest, GIVENrecordsWHENinsertedIntoContainerTHENproperOrderedPrint) {
     // Prepare
     std::stringstream container_stream{""};
-    btree::Container<RECORDS_IN_NODE> container(&container_stream, 0, 0);
+    btree::Container<5> container(&container_stream, 0, 0);
     std::set<uint64_t> sorted_keys{};
     const char value[8] = "plzWORK";
 
@@ -164,7 +164,7 @@ TEST(BTreeBigTest, GIVENrecordsWHENinsertedIntoContainerTHENproperOrderedPrint) 
 TEST(BTreeBigTest, GIVENrandRecordsWHENinsertedIntoContainerTHENproperOrderedPrint) {
     // Prepare
     std::stringstream container_stream{""};
-    btree::Container<RECORDS_IN_NODE> container(&container_stream, 0, 0);
+    btree::Container<5> container(&container_stream, 0, 0);
     std::set<uint64_t> sorted_keys{};
     const char value[8] = "plzWORK";
 
@@ -201,7 +201,7 @@ TEST(BTreeBigTest, GIVENrandRecordsWHENinsertedIntoContainerTHENproperOrderedPri
 TEST(BTreeBigTest, GIVENrandRecordsWHENinsertedAndRemoveIntoContainerTHENproperOrderedPrint) {
     // Prepare
     std::stringstream container_stream{""};
-    btree::Container<RECORDS_IN_NODE> container(&container_stream, 0, 0);
+    btree::Container<5> container(&container_stream, 0, 0);
     std::set<uint64_t> sorted_keys{};
     const char value[8] = "plzWORK";
 

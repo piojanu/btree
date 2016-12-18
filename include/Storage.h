@@ -5,6 +5,7 @@
 
 #include <iosfwd>
 #include <unordered_set>
+#include <iostream>
 
 namespace btree {
 
@@ -52,7 +53,7 @@ public:
         }
 
         try {
-            stream->seekg(offset * sizeof(Node<RECORDS_IN_NODE>), std::ios_base::beg);
+            stream->seekg(offset * sizeof(Node<RECORDS_IN_NODE>), std::ios::beg);
             stream->read(reinterpret_cast<char *>(node), sizeof(Node<RECORDS_IN_NODE>));
             g_iinfo.reads++;
         }
@@ -93,10 +94,12 @@ public:
             return INVALID_OFFSET;
         }
 
+#ifdef GTEST_RUN
         // TODO: Horrible! This monster is here because of close dead line and bad tests assumption about emptiness of deleted nodes.
         Node<RECORDS_IN_NODE> empty{};
         write_node(offset, &empty, true);
         g_iinfo.writes--;
+#endif
 
         free_offsets.insert(offset);
         return SUCCESS;

@@ -62,13 +62,13 @@ set(GTEST_DIR ${CMAKE_SOURCE_DIR}/third_party/googletest)
 
 add_executable(${TEST_EXE_NAME} ${SOURCES} ${TEST_SOURCES} ${GTEST_SOURCES} ${HEADERS})
 target_include_directories(${TEST_EXE_NAME} PUBLIC ${INCLUDE_DIRS} ${GTEST_DIR} ${GTEST_INCLUDE_DIRS})
+target_compile_definitions(${TEST_EXE_NAME} PRIVATE GTEST_RUN=1)
 
 # On linux it needs to link against pthread library.
 # When generating VS solution it works fine without anything.
 if(UNIX)
     target_link_libraries(${TEST_EXE_NAME} PUBLIC pthread)
 endif(UNIX)
-
 
 #add_custom_command(TARGET ${TEST_EXE_NAME} POST_BUILD COMMAND ${TEST_EXE_NAME}
 #                   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)

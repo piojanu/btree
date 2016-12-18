@@ -8,6 +8,7 @@
 #include <fstream>
 #include <unordered_set>
 #include <iosfwd>
+#include <iomanip>
 
 namespace btree {
 
@@ -185,7 +186,7 @@ ERROR_HANDLER:
         do {
             for (auto i = 0ULL; i < next_node->usage; i++) {
                 out << next_node->node_entries[i].offset << " " << std::string(next_node->node_entries[i].record.value)
-                    << " ";
+                    << std::endl;
             }
 
             if (next_node->next_offset != 0) {
@@ -303,7 +304,7 @@ protected:
     inline int
     shift_to_left(Node<RECORDS_IN_NODE> *leaf, uint32_t start_index, uint32_t step = 1, bool clear = false,
                   bool inner = false) const {
-        if (start_index - step < 0) {
+        if (static_cast<int64_t>(start_index - step) < 0) {
             return NOT_ENOUGH_SPACE;
         }
 
@@ -531,7 +532,7 @@ protected:
             }
             node->node.usage++;
 
-            ret = storage->write_node(node->offset, &node->node, true);
+            return storage->write_node(node->offset, &node->node, true);
         } else { // Leaf doesn't have space for new record.
             // !!! If we have only root, split it.
             if (level == 1) {
@@ -660,7 +661,7 @@ protected:
 
             // If it is inner node, delete previous key.
             if (!is_leaf) {
-                if (index - 1 >= 0) {
+                if (static_cast<int64_t>(index - 1) >= 0) {
                     node->node_entries[index - 1].record.key = 0;
                 }
             }

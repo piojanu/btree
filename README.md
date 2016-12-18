@@ -1,21 +1,18 @@
-# btree
+# b+tree
 University project from subject Data Base Structures
 
-# Check point tests results, before change in node
-[==========] 65 tests from 9 test cases ran. (3 ms total)
-[  PASSED  ] 53 tests.
-[  FAILED  ] 12 tests, listed below:
-[  FAILED  ] BTreeBasicTest.GIVENemptyContainerWHENupdateTHENreturnRecordNotFound
-[  FAILED  ] BTreeBasicTest.GIVENcontainerWithRecordWHENupdateRecordTHENreturnSuccess
-[  FAILED  ] BTreeBasicTest.GIVENemptyContainerWHENremoveTHENreturnRecordNotFound
-[  FAILED  ] BTreeBasicTest.GIVENcontainerWithRecordWHENremoveRecordTHENreturnSuccess
-[  FAILED  ] BTreeBasicTest.GIVENcontainerWithRecordWHENupdateRecordAndGetValueTHENreturnSuccessAndproperValue
-[  FAILED  ] BTreeBasicTest.GIVENcontainerWithRecordWHENremoveRecordAndGetValueTHENreturnEmptyStorage
-[  FAILED  ] BTreePrintTest.GIVENcontainerWith5RecordsWHENprintDataOrderedTHENproperPrint
-[  FAILED  ] BTreePrintTest.GIVENcontainerWith5RecordsWHENprintRawFileTHENproperBinaryPrint
-[  FAILED  ] BTreeAdvancedTest.GIVENfullTreeHighTwoWHENinsertLowerValueTHENproperSplit
-[  FAILED  ] BTreeAdvancedTest.GIVENfullTreeHighTwoWHENinsertMidValueTHENproperSplit
-[  FAILED  ] BTreeAdvancedTest.GIVENfullTreeHighTwoWHENinsertHigherValueTHENproperSplit
-[  FAILED  ] BTreeAdvancedTest.GIVENleafsFullAndBrotherOfParentWithSpaceAndTreeHighThreeWHENinsertValueTHENproperSplitAndCompensation
+# Where is what?
+'tests' directory contains unit tests. Gtest library is used for testing.
+Content of 'include' and 'source' directories with main.cpp in top directory are project sources and headers.
 
-12 FAILED TESTS
+# Building it
+Use cmake to generate makefiles or workspaces. If you want to use clang, you can use -DUSE_CLANG=1 param.
+
+Alternatively you can use scripts 'gen_makefiles.sh' and 'gen_ninjafiles.sh' to generate makefiles for make or ninja.
+In both, you can specify 'use_clang' param to use clang compiler.
+Those scripts will generate makefiles in 'build\' directory.
+
+# Run it
+After build, binaries will be put in 'bin\' directory.
+'runtest_btree' is unit tests binary.
+'btree' is project binary.
