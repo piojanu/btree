@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/piojanu/btree.svg?branch=master)](https://travis-ci.org/piojanu/btree)
+
 # b+tree
 University project from subject Data Base Structures
 
